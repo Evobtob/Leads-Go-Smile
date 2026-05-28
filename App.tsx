@@ -123,11 +123,11 @@ const App: React.FC = () => {
     setIsLoading(true);
     setFetchError(null);
     setIsInvalidSource(false);
+    let timeoutId: number | undefined;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      timeoutId = window.setTimeout(() => controller.abort(), 45000);
       const response = await fetch(LEADS_WEBHOOK_URL, { signal: controller.signal });
-      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -158,6 +158,9 @@ const App: React.FC = () => {
       setLeads([]);
       setFetchError("Erro ao carregar dados da fonte");
     } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
       setIsLoading(false);
     }
   }, []);
