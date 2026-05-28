@@ -5,7 +5,7 @@ import { Lead } from '../types';
 import { formatCurrency } from '../utils';
 
 interface AdminProps {
-  settings: { commissionPercent: number, dataUrl: string };
+  settings: { commissionPercent: number, dataUrl: string, sheetId: string };
   onUpdateSettings: (newSettings: any) => void;
   leads: Lead[];
   onUpdateStatus: (id: string, updates: Partial<Lead>, extraData?: any) => void;
@@ -113,14 +113,25 @@ const Admin: React.FC<AdminProps> = ({ settings, onUpdateSettings, leads, onUpda
               <p className="mt-3 text-[11px] text-slate-400 leading-relaxed italic">Este valor será aplicado automaticamente sobre o orçamento fechado de cada consulta finalizada.</p>
             </div>
 
-            <div className="pt-4 border-t border-slate-50">
-              <label className="text-[10px] font-bold text-[#A0AEC0] uppercase tracking-widest block mb-3">N8N Webhook Endpoint</label>
-              <input
-                type="text"
-                value={settings.dataUrl}
-                readOnly
-                className="w-full h-14 bg-[#F8F9FB] rounded-2xl px-6 font-medium text-[10px] text-gray-500 outline-none"
-              />
+            <div className="pt-4 border-t border-slate-50 space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-[#A0AEC0] uppercase tracking-widest block mb-3">N8N Webhook Endpoint</label>
+                <input
+                  type="text"
+                  value={settings.dataUrl}
+                  readOnly
+                  className="w-full h-14 bg-[#F8F9FB] rounded-2xl px-6 font-medium text-[10px] text-gray-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-[#A0AEC0] uppercase tracking-widest block mb-3">Sheet ID ativo</label>
+                <input
+                  type="text"
+                  value={settings.sheetId}
+                  readOnly
+                  className="w-full h-14 bg-[#F8F9FB] rounded-2xl px-6 font-medium text-[11px] text-gray-700 outline-none"
+                />
+              </div>
             </div>
           </div>
 

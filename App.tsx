@@ -9,7 +9,6 @@ import Accounts from './views/Accounts';
 import Admin from './views/Admin';
 import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
 import { formatMonthYear, getLeadsByMonth, inferStatus } from './utils';
-import { MOCK_LEADS_DATA } from './constants';
 
 const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
 const WEBHOOK_URL = 'https://n8n.evob.org/webhook/997a304a-2dc7-4c4e-b935-bd19ce7f87de';
@@ -33,8 +32,10 @@ const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [settings, setSettings] = useState<AdminSettings>({
     commissionPercent: 3,
-    dataUrl: LEADS_WEBHOOK_URL
+    dataUrl: LEADS_WEBHOOK_URL,
+    sheetId: GOOGLE_SHEET_ID
   });
+  const [isInvalidSource, setIsInvalidSource] = useState(false);
 
   const extractRawDate = (item: any): string => {
     return String(item.Data ?? item['4'] ?? item.data ?? item.timestamp ?? '').trim();
@@ -54,6 +55,44 @@ const App: React.FC = () => {
 
     const parsed = new Date(yyyy, mm - 1, dd, hh, min, ss);
     return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const normalizeKey = (key: string): string => key
+    .normalize('NFD')
+    .replace(/[^\w\s]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_')
+    .toLowerCase();
+
+  const SOURCE_SCHEMA_ALIASES: Record<string, string[]> = {
+    source: ['source', 'origem', 'canal', 'utm_source'],
+    lead_quality: ['lead_quality', 'qualidade_lead', 'qualidade', 'status_lead'],
+    name: ['name', 'nome', 'lead_name', 'full_name'],
+    phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile'],
+    email: ['email', 'e_mail', 'mail'],
+    location: ['location', 'localizacao', 'cidade', 'regiao', 'bairro'],
+    date: ['data', 'date', 'timestamp', 'created_at']
+  };
+
+  const validateSourceSchema = (rows: any[]): boolean => {
+    if (!Array.isArray(rows) || rows.length === 0) return false;
+
+    const sampleRows = rows.slice(0, 20).filter((row) => row && typeof row === 'object');
+    if (sampleRows.length === 0) return false;
+
+    const normalizedKeys = new Set(
+      sampleRows.flatMap((row) => Object.keys(row).map(normalizeKey))
+    );
+
+    const hasAnyAlias = (canonicalField: keyof typeof SOURCE_SCHEMA_ALIASES): boolean => {
+      return SOURCE_SCHEMA_ALIASES[canonicalField].some((alias) => normalizedKeys.has(alias));
+    };
+
+    const requiredFields: Array<keyof typeof SOURCE_SCHEMA_ALIASES> = ['source', 'name', 'phone', 'email'];
+    const requiredOk = requiredFields.every(hasAnyAlias);
+    const contextualOk = hasAnyAlias('lead_quality') || hasAnyAlias('location') || hasAnyAlias('date');
+
+    return requiredOk && contextualOk;
   };
 
   const mapDataToLeads = (data: any[]): Lead[] => {
@@ -83,6 +122,7 @@ const App: React.FC = () => {
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     setFetchError(null);
+    setIsInvalidSource(false);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -92,6 +132,13 @@ const App: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data)) {
+          if (!validateSourceSchema(data)) {
+            setLeads([]);
+            setIsInvalidSource(true);
+            setFetchError('Fonte inválida');
+            return;
+          }
+
           const mappedLeads = mapDataToLeads(data);
           setLeads(mappedLeads);
 
@@ -108,12 +155,12 @@ const App: React.FC = () => {
       }
       throw new Error("Erro de rede");
     } catch (error) {
-      setFetchError("Modo Offline");
-      if (leads.length === 0) setLeads(mapDataToLeads(MOCK_LEADS_DATA));
+      setLeads([]);
+      setFetchError("Erro ao carregar dados da fonte");
     } finally {
       setIsLoading(false);
     }
-  }, [leads.length]);
+  }, []);
 
   useEffect(() => {
     fetchLeads();
@@ -253,7 +300,11 @@ const App: React.FC = () => {
           {isSyncing ? "A processar..." : fetchError}
         </div>
       )}
-      {renderView()}
+      {isInvalidSource ? (
+        <div className="mt-8 bg-red-50 border border-red-200 text-red-700 rounded-2xl p-6 text-center font-bold">
+          Fonte inválida
+        </div>
+      ) : renderView()}
     </Layout>
   );
 };

@@ -22,6 +22,7 @@ export type AppView = 'resumo' | 'inbox' | 'lixo' | 'visitas' | 'contas' | 'admi
 export interface AdminSettings {
   commissionPercent: number;
   dataUrl: string;
+  sheetId: string;
 }
 
 export interface LeadUpdatePayload {
