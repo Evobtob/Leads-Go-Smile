@@ -113,14 +113,14 @@ const App: React.FC = () => {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const schemaCheck = (rows: any[]): { valid: boolean; missingRequired: string[] } => {
+  const schemaCheck = (rows: any[]): { valid: boolean; missingRequired: string[]; availableFields: string[] } => {
     if (!Array.isArray(rows) || rows.length === 0) {
-      return { valid: false, missingRequired: ['payload_vazio'] };
+      return { valid: false, missingRequired: ['payload_vazio'], availableFields: [] };
     }
 
     const sampleRows = rows.slice(0, 30).filter((row) => row && typeof row === 'object');
     if (sampleRows.length === 0) {
-      return { valid: false, missingRequired: ['linhas_invalidas'] };
+      return { valid: false, missingRequired: ['linhas_invalidas'], availableFields: [] };
     }
 
     const normalizedKeys = new Set(
@@ -129,8 +129,9 @@ const App: React.FC = () => {
 
     const requiredFields: Array<keyof typeof SOURCE_SCHEMA_ALIASES> = ['name', 'phone', 'email', 'date'];
     const missingRequired = requiredFields.filter((field) => !normalizedKeys.has(field));
+    const availableFields = Array.from(normalizedKeys).sort();
 
-    return { valid: missingRequired.length === 0, missingRequired };
+    return { valid: missingRequired.length === 0, missingRequired, availableFields };
   };
 
   const mapDataToLeads = (data: any[]): Lead[] => {
@@ -181,7 +182,9 @@ const App: React.FC = () => {
           if (!validation.valid) {
             setLeads([]);
             setIsInvalidSource(true);
-            setFetchError(`Fonte inválida: faltam campos obrigatórios [${validation.missingRequired.join(', ')}]`);
+            setFetchError(
+              `Fonte inválida: faltam campos obrigatórios [${validation.missingRequired.join(', ')}]. Campos recebidos: [${validation.availableFields.join(', ')}]`
+            );
             return;
           }
 
