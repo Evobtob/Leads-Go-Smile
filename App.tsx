@@ -65,56 +65,101 @@ const App: React.FC = () => {
     .toLowerCase();
 
   const SOURCE_SCHEMA_ALIASES: Record<string, string[]> = {
+    row_number: ['row_number', 'row', 'id', 'lead_id', 'linha', 'line_number'],
     source: ['source', 'origem', 'canal', 'utm_source'],
-    lead_quality: ['lead_quality', 'qualidade_lead', 'qualidade', 'status_lead'],
-    name: ['name', 'nome', 'lead_name', 'full_name'],
-    phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile'],
-    email: ['email', 'e_mail', 'mail'],
+    lead_quality: ['lead_quality', 'qualidade_lead', 'qualidade', 'status_lead', 'lead_status'],
+    name: ['name', 'nome', 'lead_name', 'full_name', 'cliente', 'contact_name'],
+    phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1'],
+    email: ['email', 'e_mail', 'mail', 'email_address'],
     location: ['location', 'localizacao', 'cidade', 'regiao', 'bairro'],
-    date: ['data', 'date', 'timestamp', 'created_at', '4']
+    date: ['data', 'date', 'timestamp', 'created_at', '4', 'lead_created_at'],
+    notes: ['comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
+    contact_date: ['data_contacto', 'data contato', 'contact_date', 'contacted_at'],
+    owner: ['responsavel', 'responsável', 'owner', 'responsible'],
+    doctor: ['medico', 'médico', 'doctor'],
+    appointment_date: ['data_primeira_consulta', 'primeira_consulta', 'appointment_date', 'consulta'],
+    value: ['valor_real_bruto', 'valor_fechado', 'valor', 'value', 'budget', 'amount']
   };
 
-  const validateSourceSchema = (rows: any[]): boolean => {
-    if (!Array.isArray(rows) || rows.length === 0) return false;
+  const aliasToCanonical = Object.entries(SOURCE_SCHEMA_ALIASES).reduce<Record<string, string>>((acc, [canonical, aliases]) => {
+    aliases.forEach((alias) => {
+      acc[normalizeKey(alias)] = canonical;
+    });
+    return acc;
+  }, {});
 
-    const sampleRows = rows.slice(0, 20).filter((row) => row && typeof row === 'object');
-    if (sampleRows.length === 0) return false;
+  const normalizeRow = (item: Record<string, unknown>): Record<string, unknown> => {
+    return Object.entries(item).reduce<Record<string, unknown>>((acc, [rawKey, value]) => {
+      const canonicalKey = aliasToCanonical[normalizeKey(rawKey)] || normalizeKey(rawKey);
+      if (acc[canonicalKey] === undefined || acc[canonicalKey] === null || acc[canonicalKey] === '') {
+        acc[canonicalKey] = value;
+      }
+      return acc;
+    }, {});
+  };
+
+  const parseNumberValue = (value: unknown): number => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    if (typeof value !== 'string') return 0;
+
+    const sanitized = value
+      .trim()
+      .replace(/\s/g, '')
+      .replace(/€/g, '')
+      .replace(/\.(?=\d{3}(\D|$))/g, '')
+      .replace(',', '.');
+
+    const parsed = Number.parseFloat(sanitized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const schemaCheck = (rows: any[]): { valid: boolean; missingRequired: string[] } => {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { valid: false, missingRequired: ['payload_vazio'] };
+    }
+
+    const sampleRows = rows.slice(0, 30).filter((row) => row && typeof row === 'object');
+    if (sampleRows.length === 0) {
+      return { valid: false, missingRequired: ['linhas_invalidas'] };
+    }
 
     const normalizedKeys = new Set(
-      sampleRows.flatMap((row) => Object.keys(row).map(normalizeKey))
+      sampleRows.flatMap((row) => Object.keys(normalizeRow(row)).map(normalizeKey))
     );
 
-    const hasAnyAlias = (canonicalField: keyof typeof SOURCE_SCHEMA_ALIASES): boolean => {
-      return SOURCE_SCHEMA_ALIASES[canonicalField].some((alias) => normalizedKeys.has(alias));
-    };
+    const requiredFields: Array<keyof typeof SOURCE_SCHEMA_ALIASES> = ['name', 'phone', 'email', 'date'];
+    const missingRequired = requiredFields.filter((field) => !normalizedKeys.has(field));
 
-    const requiredFields: Array<keyof typeof SOURCE_SCHEMA_ALIASES> = ['source', 'name', 'phone', 'email'];
-    const requiredOk = requiredFields.every(hasAnyAlias);
-    const contextualOk = hasAnyAlias('lead_quality') || hasAnyAlias('location') || hasAnyAlias('date');
-
-    return requiredOk && contextualOk;
+    return { valid: missingRequired.length === 0, missingRequired };
   };
 
   const mapDataToLeads = (data: any[]): Lead[] => {
     return data
       .map((item: any) => {
-        const parsedDate = parseLeadDate(extractRawDate(item));
+        const normalized = normalizeRow(item);
+        const parsedDate = parseLeadDate(String(normalized.date ?? extractRawDate(item) ?? ''));
+        const notes = String(normalized.notes ?? '');
+        const appointmentDate = String(normalized.appointment_date ?? '');
         // Não excluir linhas sem data válida: leads de teste também devem entrar no dataset sincronizado.
         const timestamp = (parsedDate || new Date()).toISOString();
 
         return {
-          id: String(item.row_number || Math.random()),
-          externalId: String(item.row_number || '0'),
-          name: String(item.Nome || 'Sem Nome'),
-          phone: String(item.Telefone || ''),
-          email: item.Email || '',
+          id: String(normalized.row_number || Math.random()),
+          externalId: String(normalized.row_number || '0'),
+          name: String(normalized.name || 'Sem Nome'),
+          phone: String(normalized.phone || ''),
+          email: String(normalized.email || ''),
           timestamp,
-          status: inferStatus(item),
-          isContacted: !!(item["Data Contacto"] || item["Responsável"]),
-          notes: item.Comentários || '',
-          doctor: item.Médico || '',
-          appointmentDate: item["Data Primeira Consulta"] || '',
-          value: parseFloat(item["Valor Real Bruto"]) || 0
+          status: inferStatus({
+            ...item,
+            Comentários: notes,
+            'Data Primeira Consulta': appointmentDate
+          }),
+          isContacted: !!(normalized.contact_date || normalized.owner),
+          notes,
+          doctor: String(normalized.doctor || ''),
+          appointmentDate,
+          value: parseNumberValue(normalized.value)
         };
       });
   };
@@ -132,10 +177,11 @@ const App: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data)) {
-          if (!validateSourceSchema(data)) {
+          const validation = schemaCheck(data);
+          if (!validation.valid) {
             setLeads([]);
             setIsInvalidSource(true);
-            setFetchError('Fonte inválida');
+            setFetchError(`Fonte inválida: faltam campos obrigatórios [${validation.missingRequired.join(', ')}]`);
             return;
           }
 
