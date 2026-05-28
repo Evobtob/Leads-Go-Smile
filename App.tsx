@@ -13,7 +13,7 @@ import { formatMonthYear, getLeadsByMonth, inferStatus } from './utils';
 const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
 const WEBHOOK_URL = 'https://n8n.evob.org/webhook/997a304a-2dc7-4c4e-b935-bd19ce7f87de';
 const UPDATE_WEBHOOK_URL = 'https://n8n.evob.org/webhook/2f28ed96-5ed8-48af-b009-1d519cf07f9b';
-const REMINDER_WEBHOOK_URL = 'https://n8n.evob.org/webhook/reminder-email-gosmile'; // URL sugerida para lembretes
+const REMINDER_WEBHOOK_URL = 'https://n8n.evob.org/webhook/reminder-email-gosmile';
 
 const withSheetId = (baseUrl: string): string => {
   const url = new URL(baseUrl);
@@ -22,6 +22,8 @@ const withSheetId = (baseUrl: string): string => {
 };
 
 const LEADS_WEBHOOK_URL = withSheetId(WEBHOOK_URL);
+const LEADS_UPDATE_WEBHOOK_URL = withSheetId(UPDATE_WEBHOOK_URL);
+const LEADS_REMINDER_WEBHOOK_URL = withSheetId(REMINDER_WEBHOOK_URL);
 const FETCH_TIMEOUT_MS = 30000;
 const FETCH_MAX_RETRIES = 2;
 const FETCH_BACKOFF_MS = 2000;
@@ -35,12 +37,18 @@ type FetchFailure = {
   status?: number;
 };
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  return 'Erro desconhecido';
+};
+
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('resumo');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [settings, setSettings] = useState<AdminSettings>({
     commissionPercent: 3,
@@ -290,7 +298,7 @@ const App: React.FC = () => {
         setIsInvalidSource(true);
         setFetchError(lastError.message);
       } else {
-        setFetchError(`Erro ao carregar dados da fonte: ${lastError?.message || 'falha desconhecida'}`);
+        setFetchError(`Erro ao sincronizar com Google Sheet: ${lastError?.message || 'falha desconhecida'}`);
       }
     } catch {
       setFetchError('Erro ao carregar dados da fonte');
@@ -327,7 +335,7 @@ const App: React.FC = () => {
         data_tratamento: formattedNow
       };
 
-      const response = await fetch(UPDATE_WEBHOOK_URL, {
+      const response = await fetch(LEADS_UPDATE_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -336,8 +344,7 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error("Sync falhou");
     } catch (error) {
       console.error('Failed to sync:', error);
-      setFetchError("Erro na sincronização");
-      setTimeout(() => setFetchError(null), 3000);
+      setFetchError(`Erro na sincronização de atualização: ${getErrorMessage(error)}`);
     } finally {
       setIsSyncing(false);
     }
@@ -359,7 +366,7 @@ const App: React.FC = () => {
         timestamp_envio: new Date().toISOString()
       };
 
-      const response = await fetch(REMINDER_WEBHOOK_URL, {
+      const response = await fetch(LEADS_REMINDER_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -434,7 +441,7 @@ const App: React.FC = () => {
       isSyncing={isLoading || isSyncing}
     >
       {(fetchError || isSyncing || isLoading || syncStatusMessage) && (
-        <div className={`px-4 py-2 text-[10px] font-bold text-center uppercase tracking-tight transition-all fixed top-[110px] left-0 right-0 z-50 shadow-md ${(isSyncing || isLoading || syncStatusMessage) ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white'}`}>
+        <div className={`px-4 py-2 text-[10px] font-bold text-center uppercase tracking-tight transition-all fixed top-[110px] left-0 right-0 z-50 shadow-md ${(isSyncing || isLoading || syncStatusMessage) ? 'bg-blue-600 text-white' : 'bg-red-600 text-white'}`}>
           {(isSyncing || isLoading) ? (syncStatusMessage || 'A sincronizar...') : fetchError}
         </div>
       )}
