@@ -520,11 +520,20 @@ function getLeadsGoSmile_() {
   const dateColumn = findLeadColumn_(headers, 'date');
   const contactDateColumn = findLeadColumn_(headers, 'contact_date');
   const inferredDateColumn = detectDateColumnFromRows_(rows, headers.length);
+
+  // Prioridade de data:
+  // 1) coluna explícita de data (quando existir)
+  // 2) coluna inferida por amostragem (ex.: coluna A sem header com ISO timestamps)
+  // 3) coluna de data de contacto (último fallback)
+  //
+  // Motivo: algumas folhas têm "contacted_at" preenchido só para poucas linhas.
+  // Se usarmos contact_date antes da inferência, a maioria dos cards fica "Sem data"
+  // mesmo quando a coluna real de criação do lead está preenchida.
   const fallbackDateColumn = dateColumn !== -1
     ? dateColumn
-    : (contactDateColumn !== -1
-      ? contactDateColumn
-      : (inferredDateColumn !== -1 ? inferredDateColumn : -1));
+    : (inferredDateColumn !== -1
+      ? inferredDateColumn
+      : (contactDateColumn !== -1 ? contactDateColumn : -1));
 
   return rows
     .filter((row) => row.some((cell) => String(cell || '').trim() !== ''))
