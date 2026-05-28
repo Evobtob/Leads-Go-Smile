@@ -97,9 +97,9 @@ const App: React.FC = () => {
 
   const mapDataToLeads = (data: any[]): Lead[] => {
     return data
-      .filter(item => parseLeadDate(extractRawDate(item)) !== null)
       .map((item: any) => {
         const parsedDate = parseLeadDate(extractRawDate(item));
+        // Não excluir linhas sem data válida: leads de teste também devem entrar no dataset sincronizado.
         const timestamp = (parsedDate || new Date()).toISOString();
 
         return {
