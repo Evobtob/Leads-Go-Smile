@@ -20,13 +20,16 @@ export const getLeadsByMonth = (leads: Lead[], month: number, year: number): Lea
   return leads
     .filter(lead => {
       const ms = toTimestampMs(lead.timestamp);
-      if (!Number.isFinite(ms)) return false;
+      // Mantém leads sem data visíveis em qualquer mês para evitar "desaparecerem" da app
+      // quando a fonte vier com timestamp vazio.
+      if (!Number.isFinite(ms)) return true;
       const d = new Date(ms);
       // Usamos getMonth e getFullYear que respeitam a hora local definida no parsing
       return d.getMonth() === month && d.getFullYear() === year;
     })
     .sort((a, b) => {
-      // Ordenação decrescente: o timestamp maior (mais recente) vem primeiro
+      // Ordenação decrescente: o timestamp maior (mais recente) vem primeiro.
+      // Leads sem timestamp válido ficam no fim (toTimestampMs => -Infinity).
       return toTimestampMs(b.timestamp) - toTimestampMs(a.timestamp);
     });
 };
