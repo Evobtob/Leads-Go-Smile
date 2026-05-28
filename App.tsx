@@ -27,35 +27,40 @@ const App: React.FC = () => {
     dataUrl: WEBHOOK_URL
   });
 
+  const extractRawDate = (item: any): string => {
+    return String(item.Data ?? item['4'] ?? item.data ?? item.timestamp ?? '').trim();
+  };
+
+  const parseLeadDate = (rawDate: string): Date | null => {
+    if (!rawDate || rawDate === 'z') return null;
+
+    const nativeDate = new Date(rawDate);
+    if (!isNaN(nativeDate.getTime())) return nativeDate;
+
+    const [datePart, timePart = '00:00:00'] = rawDate.split(' ');
+    const [yyyy, mm, dd] = datePart.split('-').map(n => parseInt(n, 10));
+    const [hh, min, ss = 0] = timePart.split(':').map(n => parseInt(n, 10));
+
+    if ([yyyy, mm, dd, hh, min, ss].some(n => Number.isNaN(n))) return null;
+
+    const parsed = new Date(yyyy, mm - 1, dd, hh, min, ss);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
   const mapDataToLeads = (data: any[]): Lead[] => {
     return data
-      .filter(item => item.Data && item.Data.length > 8 && item.Data !== 'z')
+      .filter(item => parseLeadDate(extractRawDate(item)) !== null)
       .map((item: any) => {
-        let timestamp: string;
-        try {
-          const parts = item.Data.split(' ');
-          const dateParts = parts[0].split('-');
-          const timeParts = parts[1] ? parts[1].split(':') : ['00', '00', '00'];
-          const localDate = new Date(
-            parseInt(dateParts[0]), 
-            parseInt(dateParts[1]) - 1, 
-            parseInt(dateParts[2]),
-            parseInt(timeParts[0]),
-            parseInt(timeParts[1]),
-            parseInt(timeParts[2] || '0')
-          );
-          timestamp = localDate.toISOString();
-        } catch (e) {
-          timestamp = new Date().toISOString();
-        }
-        
+        const parsedDate = parseLeadDate(extractRawDate(item));
+        const timestamp = (parsedDate || new Date()).toISOString();
+
         return {
           id: String(item.row_number || Math.random()),
           externalId: String(item.row_number || '0'),
           name: String(item.Nome || 'Sem Nome'),
           phone: String(item.Telefone || ''),
           email: item.Email || '',
-          timestamp: timestamp,
+          timestamp,
           status: inferStatus(item),
           isContacted: !!(item["Data Contacto"] || item["Responsável"]),
           notes: item.Comentários || '',
@@ -78,7 +83,17 @@ const App: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data)) {
-          setLeads(mapDataToLeads(data));
+          const mappedLeads = mapDataToLeads(data);
+          setLeads(mappedLeads);
+
+          if (mappedLeads.length > 0) {
+            const latestTimestamp = mappedLeads.reduce((latest, lead) => {
+              return new Date(lead.timestamp).getTime() > new Date(latest.timestamp).getTime() ? lead : latest;
+            }).timestamp;
+            const latestDate = new Date(latestTimestamp);
+            setSelectedDate(new Date(latestDate.getFullYear(), latestDate.getMonth(), 1));
+          }
+
           return;
         }
       }
