@@ -22,6 +22,18 @@ const withSheetId = (baseUrl: string): string => {
 };
 
 const LEADS_WEBHOOK_URL = withSheetId(WEBHOOK_URL);
+const FETCH_TIMEOUT_MS = 30000;
+const FETCH_MAX_RETRIES = 2;
+const FETCH_BACKOFF_MS = 2000;
+
+type FetchFailureKind = 'network' | 'timeout' | 'http' | 'schema' | 'parse';
+
+type FetchFailure = {
+  kind: FetchFailureKind;
+  message: string;
+  details?: string;
+  status?: number;
+};
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('resumo');
@@ -36,6 +48,7 @@ const App: React.FC = () => {
     sheetId: GOOGLE_SHEET_ID
   });
   const [isInvalidSource, setIsInvalidSource] = useState(false);
+  const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
 
   const extractRawDate = (item: any): string => {
     return String(item.Data ?? item['4'] ?? item.data ?? item.timestamp ?? '').trim();
@@ -165,29 +178,84 @@ const App: React.FC = () => {
       });
   };
 
+  const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
+  const fetchLeadsPayload = async (attempt: number): Promise<any[]> => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(LEADS_WEBHOOK_URL, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw {
+          kind: 'http',
+          status: response.status,
+          message: `Fonte respondeu com HTTP ${response.status}`
+        } as FetchFailure;
+      }
+
+      const responseText = await response.text();
+      let data: unknown;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw {
+          kind: 'parse',
+          message: 'Resposta inválida (JSON malformado).'
+        } as FetchFailure;
+      }
+
+      if (!Array.isArray(data)) {
+        throw {
+          kind: 'schema',
+          message: 'Resposta válida mas em formato inesperado (esperado array).'
+        } as FetchFailure;
+      }
+
+      const validation = schemaCheck(data);
+      if (!validation.valid) {
+        throw {
+          kind: 'schema',
+          message: `Fonte inválida: faltam campos obrigatórios [${validation.missingRequired.join(', ')}]. Campos recebidos: [${validation.availableFields.join(', ')}]`,
+          details: validation.availableFields.join(', ')
+        } as FetchFailure;
+      }
+
+      return data;
+    } catch (error: any) {
+      if (error?.kind) throw error as FetchFailure;
+      if (error?.name === 'AbortError') {
+        throw {
+          kind: 'timeout',
+          message: `Timeout da fonte (> ${FETCH_TIMEOUT_MS / 1000}s)`
+        } as FetchFailure;
+      }
+      throw {
+        kind: 'network',
+        message: 'Falha de rede ao contactar a fonte.'
+      } as FetchFailure;
+    } finally {
+      clearTimeout(timeoutId);
+      setSyncStatusMessage(attempt <= FETCH_MAX_RETRIES ? `Sincronização: tentativa ${attempt + 1}/${FETCH_MAX_RETRIES + 1}` : null);
+    }
+  };
+
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     setFetchError(null);
     setIsInvalidSource(false);
-    let timeoutId: number | undefined;
+    setSyncStatusMessage(`Sincronização: tentativa 1/${FETCH_MAX_RETRIES + 1}`);
+
     try {
-      const controller = new AbortController();
-      timeoutId = window.setTimeout(() => controller.abort(), 45000);
-      const response = await fetch(LEADS_WEBHOOK_URL, { signal: controller.signal });
+      let lastError: FetchFailure | null = null;
 
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          const validation = schemaCheck(data);
-          if (!validation.valid) {
-            setLeads([]);
-            setIsInvalidSource(true);
-            setFetchError(
-              `Fonte inválida: faltam campos obrigatórios [${validation.missingRequired.join(', ')}]. Campos recebidos: [${validation.availableFields.join(', ')}]`
-            );
-            return;
-          }
-
+      for (let attempt = 0; attempt <= FETCH_MAX_RETRIES; attempt += 1) {
+        try {
+          const data = await fetchLeadsPayload(attempt);
           const mappedLeads = mapDataToLeads(data);
           setLeads(mappedLeads);
 
@@ -199,18 +267,36 @@ const App: React.FC = () => {
             setSelectedDate(new Date(latestDate.getFullYear(), latestDate.getMonth(), 1));
           }
 
+          setSyncStatusMessage('Sincronização concluída.');
+          window.setTimeout(() => setSyncStatusMessage(null), 1500);
           return;
+        } catch (error: any) {
+          lastError = error as FetchFailure;
+          const isTransient = lastError.kind === 'network' || lastError.kind === 'timeout' || lastError.kind === 'http';
+          const hasMoreAttempts = attempt < FETCH_MAX_RETRIES;
+
+          if (!isTransient || !hasMoreAttempts) {
+            break;
+          }
+
+          const backoffMs = FETCH_BACKOFF_MS * (attempt + 1);
+          setSyncStatusMessage(`Fonte instável (${lastError.message}). Nova tentativa em ${Math.round(backoffMs / 1000)}s...`);
+          await sleep(backoffMs);
         }
       }
-      throw new Error("Erro de rede");
-    } catch (error) {
-      setLeads([]);
-      setFetchError("Erro ao carregar dados da fonte");
-    } finally {
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
+
+      if (lastError?.kind === 'schema' || lastError?.kind === 'parse') {
+        setLeads([]);
+        setIsInvalidSource(true);
+        setFetchError(lastError.message);
+      } else {
+        setFetchError(`Erro ao carregar dados da fonte: ${lastError?.message || 'falha desconhecida'}`);
       }
+    } catch {
+      setFetchError('Erro ao carregar dados da fonte');
+    } finally {
       setIsLoading(false);
+      setSyncStatusMessage(null);
     }
   }, []);
 
@@ -347,9 +433,9 @@ const App: React.FC = () => {
       onSync={fetchLeads}
       isSyncing={isLoading || isSyncing}
     >
-      {(fetchError || isSyncing) && (
-        <div className={`px-4 py-2 text-[10px] font-bold text-center uppercase tracking-tight transition-all fixed top-[110px] left-0 right-0 z-50 shadow-md ${isSyncing ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white'}`}>
-          {isSyncing ? "A processar..." : fetchError}
+      {(fetchError || isSyncing || isLoading || syncStatusMessage) && (
+        <div className={`px-4 py-2 text-[10px] font-bold text-center uppercase tracking-tight transition-all fixed top-[110px] left-0 right-0 z-50 shadow-md ${(isSyncing || isLoading || syncStatusMessage) ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white'}`}>
+          {(isSyncing || isLoading) ? (syncStatusMessage || 'A sincronizar...') : fetchError}
         </div>
       )}
       {isInvalidSource ? (
