@@ -11,9 +11,18 @@ import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
 import { formatMonthYear, getLeadsByMonth, inferStatus } from './utils';
 import { MOCK_LEADS_DATA } from './constants';
 
+const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
 const WEBHOOK_URL = 'https://n8n.evob.org/webhook/997a304a-2dc7-4c4e-b935-bd19ce7f87de';
 const UPDATE_WEBHOOK_URL = 'https://n8n.evob.org/webhook/2f28ed96-5ed8-48af-b009-1d519cf07f9b';
 const REMINDER_WEBHOOK_URL = 'https://n8n.evob.org/webhook/reminder-email-gosmile'; // URL sugerida para lembretes
+
+const withSheetId = (baseUrl: string): string => {
+  const url = new URL(baseUrl);
+  url.searchParams.set('sheetId', GOOGLE_SHEET_ID);
+  return url.toString();
+};
+
+const LEADS_WEBHOOK_URL = withSheetId(WEBHOOK_URL);
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('resumo');
@@ -24,7 +33,7 @@ const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [settings, setSettings] = useState<AdminSettings>({
     commissionPercent: 3,
-    dataUrl: WEBHOOK_URL
+    dataUrl: LEADS_WEBHOOK_URL
   });
 
   const extractRawDate = (item: any): string => {
@@ -77,7 +86,7 @@ const App: React.FC = () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const response = await fetch(WEBHOOK_URL, { signal: controller.signal });
+      const response = await fetch(LEADS_WEBHOOK_URL, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (response.ok) {
