@@ -71,7 +71,7 @@ const App: React.FC = () => {
     phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile'],
     email: ['email', 'e_mail', 'mail'],
     location: ['location', 'localizacao', 'cidade', 'regiao', 'bairro'],
-    date: ['data', 'date', 'timestamp', 'created_at']
+    date: ['data', 'date', 'timestamp', 'created_at', '4']
   };
 
   const validateSourceSchema = (rows: any[]): boolean => {
