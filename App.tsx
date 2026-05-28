@@ -8,7 +8,7 @@ import Agenda from './views/Agenda';
 import Accounts from './views/Accounts';
 import Admin from './views/Admin';
 import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
-import { formatMonthYear, getLeadsByMonth, inferStatus } from './utils';
+import { formatMonthYear, getLeadsByMonth, inferStatus, toTimestampMs } from './utils';
 
 const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
 const APPS_SCRIPT_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOXEHfjsc5DAo6VOh-6iNFQOZM6qyPMkDZmQC_CI3sekf4dP6qWpLdUBHM9DLnf2I/exec';
@@ -61,16 +61,37 @@ const App: React.FC = () => {
   const parseLeadDate = (rawDate: string): Date | null => {
     if (!rawDate || rawDate === 'z') return null;
 
-    const nativeDate = new Date(rawDate);
+    const normalizedRaw = rawDate.trim();
+    const nativeDate = new Date(normalizedRaw);
     if (!isNaN(nativeDate.getTime())) return nativeDate;
 
-    const [datePart, timePart = '00:00:00'] = rawDate.split(' ');
-    const [yyyy, mm, dd] = datePart.split('-').map(n => parseInt(n, 10));
-    const [hh, min, ss = 0] = timePart.split(':').map(n => parseInt(n, 10));
+    const match = normalizedRaw.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (!match) return null;
 
-    if ([yyyy, mm, dd, hh, min, ss].some(n => Number.isNaN(n))) return null;
+    const [, p1, p2, p3, hh = '0', min = '0', ss = '0'] = match;
 
-    const parsed = new Date(yyyy, mm - 1, dd, hh, min, ss);
+    let yyyy = 0;
+    let mm = 0;
+    let dd = 0;
+
+    if (p1.length === 4) {
+      yyyy = parseInt(p1, 10);
+      mm = parseInt(p2, 10);
+      dd = parseInt(p3, 10);
+    } else if (p3.length === 4) {
+      dd = parseInt(p1, 10);
+      mm = parseInt(p2, 10);
+      yyyy = parseInt(p3, 10);
+    } else {
+      return null;
+    }
+
+    const hour = parseInt(hh, 10);
+    const minute = parseInt(min, 10);
+    const second = parseInt(ss, 10);
+    if ([yyyy, mm, dd, hour, minute, second].some(n => Number.isNaN(n))) return null;
+
+    const parsed = new Date(yyyy, mm - 1, dd, hour, minute, second);
     return isNaN(parsed.getTime()) ? null : parsed;
   };
 
@@ -160,8 +181,8 @@ const App: React.FC = () => {
         const parsedDate = parseLeadDate(String(normalized.date ?? extractRawDate(item) ?? ''));
         const notes = String(normalized.resumo_contacto ?? normalized.notes ?? '');
         const appointmentDate = String(normalized.data_agendada ?? normalized.appointment_date ?? '');
-        // Não excluir linhas sem data válida: leads de teste também devem entrar no dataset sincronizado.
-        const timestamp = (parsedDate || new Date()).toISOString();
+        // Preserva linhas sem data, mas evita "agora" artificial (que distorcia ordenação por recência).
+        const timestamp = parsedDate ? parsedDate.toISOString() : '';
 
         return {
           id: String(normalized.row_number || Math.random()),
@@ -279,11 +300,14 @@ const App: React.FC = () => {
           setLeads(mappedLeads);
 
           if (mappedLeads.length > 0) {
-            const latestTimestamp = mappedLeads.reduce((latest, lead) => {
-              return new Date(lead.timestamp).getTime() > new Date(latest.timestamp).getTime() ? lead : latest;
-            }).timestamp;
-            const latestDate = new Date(latestTimestamp);
-            setSelectedDate(new Date(latestDate.getFullYear(), latestDate.getMonth(), 1));
+            const latestLead = mappedLeads.reduce((latest, lead) => {
+              return toTimestampMs(lead.timestamp) > toTimestampMs(latest.timestamp) ? lead : latest;
+            });
+            const latestMs = toTimestampMs(latestLead.timestamp);
+            if (Number.isFinite(latestMs)) {
+              const latestDate = new Date(latestMs);
+              setSelectedDate(new Date(latestDate.getFullYear(), latestDate.getMonth(), 1));
+            }
           }
 
           setSyncStatusMessage('Sincronização concluída.');

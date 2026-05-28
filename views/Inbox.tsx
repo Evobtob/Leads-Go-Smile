@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Lead } from '../types';
 import { Phone, Mail, X, Check, Calendar as CalendarIcon, User, Trash2, MessageSquare } from 'lucide-react';
+import { toTimestampMs } from '../utils';
 
 interface InboxProps {
   leads: Lead[];
@@ -14,7 +15,7 @@ interface InboxProps {
 type ModalType = 'none' | 'comment' | 'discard' | 'schedule';
 
 const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel, isSyncing }) => {
-  const sortedLeads = [...leads].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const sortedLeads = [...leads].sort((a, b) => toTimestampMs(b.timestamp) - toTimestampMs(a.timestamp));
   const [activeModal, setActiveModal] = useState<ModalType>('none');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   

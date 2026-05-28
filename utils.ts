@@ -1,6 +1,13 @@
 
 import { Lead } from './types';
 
+export const toTimestampMs = (raw: string): number => {
+  if (!raw) return Number.NEGATIVE_INFINITY;
+  const d = new Date(raw);
+  const ms = d.getTime();
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+};
+
 export const formatMonthYear = (date: Date): string => {
   const months = [
     'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
@@ -12,14 +19,15 @@ export const formatMonthYear = (date: Date): string => {
 export const getLeadsByMonth = (leads: Lead[], month: number, year: number): Lead[] => {
   return leads
     .filter(lead => {
-      const d = new Date(lead.timestamp);
-      if (isNaN(d.getTime())) return false;
+      const ms = toTimestampMs(lead.timestamp);
+      if (!Number.isFinite(ms)) return false;
+      const d = new Date(ms);
       // Usamos getMonth e getFullYear que respeitam a hora local definida no parsing
       return d.getMonth() === month && d.getFullYear() === year;
     })
     .sort((a, b) => {
       // Ordenação decrescente: o timestamp maior (mais recente) vem primeiro
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      return toTimestampMs(b.timestamp) - toTimestampMs(a.timestamp);
     });
 };
 
