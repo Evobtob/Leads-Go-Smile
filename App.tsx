@@ -11,19 +11,15 @@ import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
 import { formatMonthYear, getLeadsByMonth, inferStatus } from './utils';
 
 const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
-const WEBHOOK_URL = 'https://n8n.evob.org/webhook/997a304a-2dc7-4c4e-b935-bd19ce7f87de';
-const UPDATE_WEBHOOK_URL = 'https://n8n.evob.org/webhook/2f28ed96-5ed8-48af-b009-1d519cf07f9b';
-const REMINDER_WEBHOOK_URL = 'https://n8n.evob.org/webhook/reminder-email-gosmile';
-
-const withSheetId = (baseUrl: string): string => {
-  const url = new URL(baseUrl);
-  url.searchParams.set('sheetId', GOOGLE_SHEET_ID);
+const APPS_SCRIPT_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOXEHfjsc5DAo6VOh-6iNFQOZM6qyPMkDZmQC_CI3sekf4dP6qWpLdUBHM9DLnf2I/exec';
+const withAction = (action: string, extra: Record<string, string> = {}): string => {
+  const url = new URL(APPS_SCRIPT_BASE_URL);
+  url.searchParams.set('action', action);
+  Object.entries(extra).forEach(([key, value]) => url.searchParams.set(key, value));
   return url.toString();
 };
 
-const LEADS_WEBHOOK_URL = withSheetId(WEBHOOK_URL);
-const LEADS_UPDATE_WEBHOOK_URL = withSheetId(UPDATE_WEBHOOK_URL);
-const LEADS_REMINDER_WEBHOOK_URL = withSheetId(REMINDER_WEBHOOK_URL);
+const LEADS_WEBHOOK_URL = withAction('getLeads');
 const FETCH_TIMEOUT_MS = 30000;
 const FETCH_MAX_RETRIES = 2;
 const FETCH_BACKOFF_MS = 2000;
@@ -188,43 +184,56 @@ const App: React.FC = () => {
 
   const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
+  const callAppsScriptAction = async (action: string, payload?: Record<string, unknown>): Promise<any> => {
+    const url = new URL(APPS_SCRIPT_BASE_URL);
+    url.searchParams.set('action', action);
+    if (payload) {
+      url.searchParams.set('payload', JSON.stringify(payload));
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store'
+    });
+
+    const text = await response.text();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('Resposta inválida da API (JSON malformado).');
+    }
+
+    if (!response.ok || parsed?.ok === false) {
+      throw new Error(parsed?.error || `API respondeu com HTTP ${response.status}`);
+    }
+
+    return parsed;
+  };
+
   const fetchLeadsPayload = async (attempt: number): Promise<any[]> => {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(LEADS_WEBHOOK_URL, {
-        signal: controller.signal,
-        headers: { Accept: 'application/json' }
-      });
+      const data = await callAppsScriptAction('getLeads');
 
-      if (!response.ok) {
-        throw {
-          kind: 'http',
-          status: response.status,
-          message: `Fonte respondeu com HTTP ${response.status}`
-        } as FetchFailure;
-      }
+      const payload = Array.isArray(data)
+        ? data
+        : (data && typeof data === 'object' && (data as any).ok === true && Array.isArray((data as any).data)
+          ? (data as any).data
+          : null);
 
-      const responseText = await response.text();
-      let data: unknown;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        throw {
-          kind: 'parse',
-          message: 'Resposta inválida (JSON malformado).'
-        } as FetchFailure;
-      }
-
-      if (!Array.isArray(data)) {
+      if (!payload) {
+        const apiError = data && typeof data === 'object' && (data as any).ok === false ? String((data as any).error || 'Erro da API') : null;
         throw {
           kind: 'schema',
-          message: 'Resposta válida mas em formato inesperado (esperado array).'
+          message: apiError || 'Resposta válida mas em formato inesperado (esperado array ou {ok:true,data:[]}).'
         } as FetchFailure;
       }
 
-      const validation = schemaCheck(data);
+      const validation = schemaCheck(payload);
       if (!validation.valid) {
         throw {
           kind: 'schema',
@@ -233,7 +242,7 @@ const App: React.FC = () => {
         } as FetchFailure;
       }
 
-      return data;
+      return payload;
     } catch (error: any) {
       if (error?.kind) throw error as FetchFailure;
       if (error?.name === 'AbortError') {
@@ -335,13 +344,8 @@ const App: React.FC = () => {
         data_tratamento: formattedNow
       };
 
-      const response = await fetch(LEADS_UPDATE_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) throw new Error("Sync falhou");
+      const apiResult = await callAppsScriptAction('updateLead', payload as unknown as Record<string, unknown>);
+      if (!apiResult?.ok) throw new Error('Sync falhou');
     } catch (error) {
       console.error('Failed to sync:', error);
       setFetchError(`Erro na sincronização de atualização: ${getErrorMessage(error)}`);
@@ -366,14 +370,26 @@ const App: React.FC = () => {
         timestamp_envio: new Date().toISOString()
       };
 
-      const response = await fetch(LEADS_REMINDER_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      const subject = encodeURIComponent(`Lembrete consulta - ${lead.name}`);
+      const body = encodeURIComponent([
+        `Olá ${lead.name},`,
+        '',
+        'Relembramos a sua consulta na Go Smile.',
+        lead.appointmentDate ? `Data prevista: ${lead.appointmentDate}` : '',
+        '',
+        'Se precisar de reagendar, responda a este email ou contacte-nos.'
+      ].filter(Boolean).join('\n'));
+
+      window.open(`mailto:${lead.email}?subject=${subject}&body=${body}`, '_blank');
+
+      await callAppsScriptAction('updateLead', {
+        row_number: lead.externalId,
+        comentario: `${lead.notes ? `${lead.notes}\n` : ''}[${new Date().toISOString()}] Lembrete preparado por email.`,
+        status: lead.status,
+        data_contacto: new Date().toISOString()
       });
-      
-      if (!response.ok) throw new Error("Falha ao enviar lembrete");
-      alert(`Lembrete enviado com sucesso para ${lead.name}`);
+
+      alert(`Lembrete preparado para ${lead.name}.`);
     } catch (error) {
       console.error('Reminder failed:', error);
       alert("Erro ao enviar lembrete de e-mail.");
