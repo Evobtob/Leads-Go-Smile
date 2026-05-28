@@ -8,7 +8,7 @@ import Agenda from './views/Agenda';
 import Accounts from './views/Accounts';
 import Admin from './views/Admin';
 import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
-import { formatMonthYear, getLeadsByMonth, inferStatus, toTimestampMs } from './utils';
+import { formatMonthYear, getLeadsByMonth, inferStatus, parseLeadDate, toTimestampMs } from './utils';
 
 const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
 const APPS_SCRIPT_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOXEHfjsc5DAo6VOh-6iNFQOZM6qyPMkDZmQC_CI3sekf4dP6qWpLdUBHM9DLnf2I/exec';
@@ -58,42 +58,6 @@ const App: React.FC = () => {
     return String(item.Data ?? item['4'] ?? item.data ?? item.timestamp ?? '').trim();
   };
 
-  const parseLeadDate = (rawDate: string): Date | null => {
-    if (!rawDate || rawDate === 'z') return null;
-
-    const normalizedRaw = rawDate.trim();
-    const nativeDate = new Date(normalizedRaw);
-    if (!isNaN(nativeDate.getTime())) return nativeDate;
-
-    const match = normalizedRaw.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
-    if (!match) return null;
-
-    const [, p1, p2, p3, hh = '0', min = '0', ss = '0'] = match;
-
-    let yyyy = 0;
-    let mm = 0;
-    let dd = 0;
-
-    if (p1.length === 4) {
-      yyyy = parseInt(p1, 10);
-      mm = parseInt(p2, 10);
-      dd = parseInt(p3, 10);
-    } else if (p3.length === 4) {
-      dd = parseInt(p1, 10);
-      mm = parseInt(p2, 10);
-      yyyy = parseInt(p3, 10);
-    } else {
-      return null;
-    }
-
-    const hour = parseInt(hh, 10);
-    const minute = parseInt(min, 10);
-    const second = parseInt(ss, 10);
-    if ([yyyy, mm, dd, hour, minute, second].some(n => Number.isNaN(n))) return null;
-
-    const parsed = new Date(yyyy, mm - 1, dd, hour, minute, second);
-    return isNaN(parsed.getTime()) ? null : parsed;
-  };
 
   const normalizeKey = (key: string): string => key
     .normalize('NFD')

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Lead } from '../types';
-import { formatCurrency } from '../utils';
+import { formatCurrency, formatLeadDate } from '../utils';
 import { RefreshCw, CheckCircle, CreditCard } from 'lucide-react';
 
 interface AccountsProps {
@@ -44,7 +44,7 @@ const Accounts: React.FC<AccountsProps> = ({ leads, onUpdateStatus, onSync, mont
               <div className="flex gap-2 text-[11px] font-bold text-[#CBD5E0] mb-6">
                 <span>#{lead.externalId}</span>
                 <span>•</span>
-                <span>{new Date(lead.timestamp).toLocaleDateString('pt-PT')}</span>
+                <span>{formatLeadDate(lead.timestamp)}</span>
               </div>
 
               <div className="mb-6">

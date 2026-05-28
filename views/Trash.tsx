@@ -2,6 +2,7 @@
 import React from 'react';
 import { Lead } from '../types';
 import { RefreshCw } from 'lucide-react';
+import { formatLeadDate, formatLeadTime } from '../utils';
 
 interface TrashProps {
   leads: Lead[];
@@ -39,9 +40,9 @@ const Trash: React.FC<TrashProps> = ({ leads, onSync, monthLabel, isSyncing }) =
             <div className="flex gap-2 text-[11px] font-bold text-[#CBD5E0] mb-6">
               <span>#{lead.externalId}</span>
               <span>•</span>
-              <span>{new Date(lead.timestamp).toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+              <span>{formatLeadDate(lead.timestamp)}</span>
               <span>•</span>
-              <span>{new Date(lead.timestamp).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span>{formatLeadTime(lead.timestamp)}</span>
             </div>
 
             <div className="bg-[#F8F9FB] rounded-2xl p-4 border border-gray-100">

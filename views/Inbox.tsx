@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Lead } from '../types';
 import { Phone, Mail, X, Check, Calendar as CalendarIcon, User, Trash2, MessageSquare } from 'lucide-react';
-import { toTimestampMs } from '../utils';
+import { formatLeadDate, formatLeadTime, toTimestampMs } from '../utils';
 
 interface InboxProps {
   leads: Lead[];
@@ -97,8 +97,8 @@ const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel
                 <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[9px] font-bold uppercase tracking-wider">Facebook</span>
               </div>
               <div className="flex flex-col items-end text-[#CBD5E0]">
-                 <span className="text-[10px] font-bold uppercase">{new Date(lead.timestamp).toLocaleDateString('pt-PT')}</span>
-                 <span className="text-[9px] font-medium">{new Date(lead.timestamp).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</span>
+                 <span className="text-[10px] font-bold uppercase">{formatLeadDate(lead.timestamp)}</span>
+                 <span className="text-[9px] font-medium">{formatLeadTime(lead.timestamp)}</span>
               </div>
             </div>
 
