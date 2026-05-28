@@ -14,6 +14,7 @@ interface InboxProps {
 type ModalType = 'none' | 'comment' | 'discard' | 'schedule';
 
 const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel, isSyncing }) => {
+  const sortedLeads = [...leads].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const [activeModal, setActiveModal] = useState<ModalType>('none');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   
@@ -77,15 +78,15 @@ const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel
     <div className="py-4 relative">
       <div className="flex justify-between items-center mb-6 px-1">
         <span className="text-[11px] font-bold text-[#A0AEC0] uppercase tracking-wider">
-          {leads.length} Leads Ativas
+          {sortedLeads.length} Leads Ativas
         </span>
         <button onClick={onSync} className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Atualizar</button>
       </div>
 
       <div className="space-y-6">
-        {leads.length === 0 ? (
+        {sortedLeads.length === 0 ? (
           <div className="text-center py-20 text-gray-400">Nenhuma lead pendente.</div>
-        ) : leads.map((lead) => (
+        ) : sortedLeads.map((lead) => (
           <div key={lead.id} className="bg-white rounded-[32px] ios-shadow border border-gray-50 p-6">
             <div className="flex justify-between items-start mb-4">
               <div className="max-w-[70%]">
