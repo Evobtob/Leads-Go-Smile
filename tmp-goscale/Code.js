@@ -465,6 +465,47 @@ function findLeadColumn_(headers, canonical) {
   return -1;
 }
 
+function isLikelyDateValue_(value) {
+  if (value === null || value === undefined || value === '') return false;
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return !isNaN(value.getTime());
+  }
+  if (typeof value === 'number') {
+    if (!isFinite(value)) return false;
+    return value > 1000000000 || (value >= 20000 && value <= 100000);
+  }
+  const text = String(value).trim();
+  if (!text) return false;
+  return !isNaN(new Date(text).getTime());
+}
+
+function detectDateColumnFromRows_(rows, maxColumns) {
+  if (!rows || !rows.length || !maxColumns) return -1;
+  const sampleSize = Math.min(rows.length, 50);
+  const maxCols = Math.min(maxColumns, rows[0].length || maxColumns);
+  let bestColumn = -1;
+  let bestScore = 0;
+
+  for (let c = 0; c < maxCols; c++) {
+    let hits = 0;
+    let nonEmpty = 0;
+    for (let r = 0; r < sampleSize; r++) {
+      const value = rows[r][c];
+      if (value === null || value === undefined || String(value).trim() === '') continue;
+      nonEmpty += 1;
+      if (isLikelyDateValue_(value)) hits += 1;
+    }
+    if (!nonEmpty) continue;
+    const score = hits / nonEmpty;
+    if (score > bestScore && score >= 0.6) {
+      bestScore = score;
+      bestColumn = c + 1;
+    }
+  }
+
+  return bestColumn;
+}
+
 function getLeadsGoSmile_() {
   const sheet = getLeadsSheet_();
   const data = sheet.getDataRange().getValues();
@@ -478,7 +519,12 @@ function getLeadsGoSmile_() {
 
   const dateColumn = findLeadColumn_(headers, 'date');
   const contactDateColumn = findLeadColumn_(headers, 'contact_date');
-  const fallbackDateColumn = dateColumn !== -1 ? dateColumn : (contactDateColumn !== -1 ? contactDateColumn : (headers.length >= 4 ? 4 : -1));
+  const inferredDateColumn = detectDateColumnFromRows_(rows, headers.length);
+  const fallbackDateColumn = dateColumn !== -1
+    ? dateColumn
+    : (contactDateColumn !== -1
+      ? contactDateColumn
+      : (inferredDateColumn !== -1 ? inferredDateColumn : -1));
 
   return rows
     .filter((row) => row.some((cell) => String(cell || '').trim() !== ''))
@@ -496,10 +542,12 @@ function getLeadsGoSmile_() {
 function debugLeadsHeaders_() {
   const sheet = getLeadsSheet_();
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const rows = sheet.getDataRange().getValues().slice(1);
   return {
     headers: headers,
     normalized: headers.map(normalizeLeadKey_),
-    detectedDateColumn: findLeadColumn_(headers, 'date')
+    detectedDateColumn: findLeadColumn_(headers, 'date'),
+    inferredDateColumn: detectDateColumnFromRows_(rows, headers.length)
   };
 }
 
