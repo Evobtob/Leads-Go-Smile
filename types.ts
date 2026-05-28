@@ -30,8 +30,10 @@ export interface LeadUpdatePayload {
   nome: string; // Identificador Único (Coluna C)
   estado?: string;
   comentario?: string;
+  resumo_contacto?: string;
   medico?: string;
   data_consulta?: string;
+  data_agendada?: string;
   valor_fechado?: number;
   status: LeadStatus;
   data_tratamento?: string; // Data e hora da ação na app

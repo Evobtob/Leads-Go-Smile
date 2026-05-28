@@ -95,6 +95,8 @@ const App: React.FC = () => {
     owner: ['responsavel', 'responsável', 'owner', 'responsible'],
     doctor: ['medico', 'médico', 'doctor'],
     appointment_date: ['data_primeira_consulta', 'primeira_consulta', 'appointment_date', 'consulta'],
+    resumo_contacto: ['resumo_contacto', 'resumo contacto', 'resumo_de_contacto', 'resumo'],
+    data_agendada: ['data_agendada', 'data agendada', 'agendada_em', 'appointment_scheduled_at'],
     value: ['valor_real_bruto', 'valor_fechado', 'valor', 'value', 'budget', 'amount']
   };
 
@@ -156,8 +158,8 @@ const App: React.FC = () => {
       .map((item: any) => {
         const normalized = normalizeRow(item);
         const parsedDate = parseLeadDate(String(normalized.date ?? extractRawDate(item) ?? ''));
-        const notes = String(normalized.notes ?? '');
-        const appointmentDate = String(normalized.appointment_date ?? '');
+        const notes = String(normalized.resumo_contacto ?? normalized.notes ?? '');
+        const appointmentDate = String(normalized.data_agendada ?? normalized.appointment_date ?? '');
         // Não excluir linhas sem data válida: leads de teste também devem entrar no dataset sincronizado.
         const timestamp = (parsedDate || new Date()).toISOString();
 
@@ -338,8 +340,10 @@ const App: React.FC = () => {
         status: updates.status || lead.status,
         estado: extraData?.estado,
         comentario: extraData?.comentario || updates.notes,
+        resumo_contacto: extraData?.resumo_contacto || extraData?.comentario || updates.notes,
         medico: extraData?.medico || updates.doctor,
         data_consulta: extraData?.data_consulta || updates.appointmentDate,
+        data_agendada: extraData?.data_agendada || extraData?.data_consulta || updates.appointmentDate,
         valor_fechado: extraData?.valor_fechado !== undefined ? extraData.valor_fechado : updates.value,
         data_tratamento: formattedNow
       };

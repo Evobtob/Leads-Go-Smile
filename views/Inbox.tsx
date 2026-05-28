@@ -47,7 +47,7 @@ const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel
 
   const submitComment = () => {
     if (!selectedLead) return;
-    onUpdateStatus(selectedLead.id, { status: 'contacted', notes: comment }, { comentario: comment });
+    onUpdateStatus(selectedLead.id, { status: 'contacted', notes: comment }, { comentario: comment, resumo_contacto: comment });
     setActiveModal('none');
   };
 
@@ -55,7 +55,7 @@ const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel
     if (!selectedLead) return;
     onUpdateStatus(selectedLead.id, 
       { status: 'discarded', notes: comment }, 
-      { estado: 'NÃO INTERESSADA', comentario: comment }
+      { estado: 'NÃO INTERESSADA', comentario: comment, resumo_contacto: comment }
     );
     setActiveModal('none');
   };
@@ -66,9 +66,11 @@ const Inbox: React.FC<InboxProps> = ({ leads, onUpdateStatus, onSync, monthLabel
       { status: 'scheduled', doctor: selectedDoctor, appointmentDate, notes: comment }, 
       { 
         medico: selectedDoctor, 
-        data_consulta: appointmentDate, 
+        data_consulta: appointmentDate,
+        data_agendada: appointmentDate,
         status: 'scheduled',
-        comentario: comment // Enviando o comentário para o n8n
+        comentario: comment,
+        resumo_contacto: comment
       }
     );
     setActiveModal('none');
