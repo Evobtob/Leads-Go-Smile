@@ -136,17 +136,25 @@ export const formatCurrency = (value: number): string => {
 };
 
 export const inferStatus = (item: any): any => {
-  const notes = (item.Comentários || '').toLowerCase();
-  const appointment = item["Data Primeira Consulta"];
-  
-  if ((appointment && appointment.length > 2) || notes.includes('marcado')) {
+  const notes = String(item.Comentários || item.Notas || item.notes || '').toLowerCase();
+  const appointment = String(item['Data Primeira Consulta'] || item.appointmentDate || item.data_agendada || '').trim();
+  const sendFlag = String(item.Enviar || item.enviar || item.send_flag || '').trim().toLowerCase();
+  const callFlag = String(item.Ligar || item.ligar || item.call_flag || '').trim().toLowerCase();
+
+  const isMarked = (value: string): boolean => ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(value);
+
+  if ((appointment && appointment.length > 2) || isMarked(sendFlag) || notes.includes('marcado') || notes.includes('agendado')) {
     return 'scheduled';
   }
-  
+
   const discardKeywords = ['engano', 'não atende', 'não interessa', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'falecido'];
   if (discardKeywords.some(key => notes.includes(key))) {
     return 'discarded';
   }
-  
+
+  if (isMarked(callFlag) || notes.includes('liguei') || notes.includes('contactado') || notes.includes('contactada') || notes.includes('ligar mais tarde')) {
+    return 'contacted';
+  }
+
   return 'new';
 };

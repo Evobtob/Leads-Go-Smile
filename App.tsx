@@ -10,7 +10,7 @@ import Admin from './views/Admin';
 import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
 import { formatMonthYear, getLeadsByMonth, inferStatus, parseLeadDate, toTimestampMs } from './utils';
 
-const GOOGLE_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
+const GOOGLE_SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
 const APPS_SCRIPT_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOXEHfjsc5DAo6VOh-6iNFQOZM6qyPMkDZmQC_CI3sekf4dP6qWpLdUBHM9DLnf2I/exec';
 const withAction = (action: string, extra: Record<string, string> = {}): string => {
   const url = new URL(APPS_SCRIPT_BASE_URL);
@@ -71,17 +71,28 @@ const App: React.FC = () => {
     source: ['source', 'origem', 'canal', 'utm_source'],
     lead_quality: ['lead_quality', 'qualidade_lead', 'qualidade', 'status_lead', 'lead_status'],
     name: ['name', 'nome', 'lead_name', 'full_name', 'cliente', 'contact_name'],
-    phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1'],
+    phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1', 'número', 'numero'],
     email: ['email', 'e_mail', 'mail', 'email_address'],
     location: ['location', 'localizacao', 'cidade', 'regiao', 'bairro'],
     date: ['data', 'date', 'timestamp', 'created_at', '4', 'lead_created_at'],
-    notes: ['comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
+    speciality: ['especialidade', 'speciality', 'specialty'],
+    notes: ['comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações', 'notas'],
     contact_date: ['data_contacto', 'data contato', 'contact_date', 'contacted_at'],
     owner: ['responsavel', 'responsável', 'owner', 'responsible'],
     doctor: ['medico', 'médico', 'doctor'],
     appointment_date: ['data_primeira_consulta', 'primeira_consulta', 'appointment_date', 'consulta'],
     resumo_contacto: ['resumo_contacto', 'resumo contacto', 'resumo_de_contacto', 'resumo'],
     data_agendada: ['data_agendada', 'data agendada', 'agendada_em', 'appointment_scheduled_at'],
+    appointment_day: ['dia', 'day'],
+    appointment_month: ['mês', 'mes', 'month'],
+    appointment_hour: ['hora', 'hour'],
+    appointment_minute: ['minuto', 'minute'],
+    send_flag: ['enviar', 'send'],
+    call_flag: ['ligar', 'call'],
+    campaign: ['campanha', 'campaign'],
+    ad_set: ['ad set', 'ad_set', 'adset'],
+    ad: ['ad', 'anuncio', 'anúncio'],
+    platform: ['plataforma', 'platform'],
     value: ['valor_real_bruto', 'valor_fechado', 'valor', 'value', 'budget', 'amount']
   };
 
@@ -131,20 +142,52 @@ const App: React.FC = () => {
       sampleRows.flatMap((row) => Object.keys(normalizeRow(row)).map(normalizeKey))
     );
 
-    const requiredFields: Array<keyof typeof SOURCE_SCHEMA_ALIASES> = ['name', 'phone', 'email', 'date'];
+    const requiredFields: Array<keyof typeof SOURCE_SCHEMA_ALIASES> = ['name', 'phone', 'email'];
     const missingRequired = requiredFields.filter((field) => !normalizedKeys.has(field));
     const availableFields = Array.from(normalizedKeys).sort();
 
     return { valid: missingRequired.length === 0, missingRequired, availableFields };
   };
 
+  const firstValue = (...values: unknown[]): string => {
+    const found = values.find((value) => String(value ?? '').trim() !== '');
+    return String(found ?? '').trim();
+  };
+
+  const buildAppointmentDate = (normalized: Record<string, unknown>, leadDate: Date | null): string => {
+    const direct = firstValue(normalized.data_agendada, normalized.appointment_date);
+    if (direct) return direct;
+
+    const day = Number.parseInt(String(normalized.appointment_day ?? ''), 10);
+    const month = Number.parseInt(String(normalized.appointment_month ?? ''), 10);
+    const hour = Number.parseInt(String(normalized.appointment_hour ?? ''), 10);
+    const minute = Number.parseInt(String(normalized.appointment_minute ?? ''), 10);
+    if ([day, month, hour, minute].some((n) => Number.isNaN(n))) return '';
+
+    const year = leadDate?.getFullYear() || new Date().getFullYear();
+    const date = new Date(year, month - 1, day, hour, minute, 0);
+    if (
+      date.getFullYear() !== year
+      || date.getMonth() !== month - 1
+      || date.getDate() !== day
+      || date.getHours() !== hour
+      || date.getMinutes() !== minute
+    ) return '';
+
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  };
+
   const mapDataToLeads = (data: any[]): Lead[] => {
     return data
+      .filter((item: any) => {
+        const normalized = normalizeRow(item);
+        return !!(firstValue(normalized.name) && (firstValue(normalized.phone) || firstValue(normalized.email)));
+      })
       .map((item: any) => {
         const normalized = normalizeRow(item);
         const parsedDate = parseLeadDate(String(normalized.date ?? extractRawDate(item) ?? ''));
-        const notes = String(normalized.resumo_contacto ?? normalized.notes ?? '');
-        const appointmentDate = String(normalized.data_agendada ?? normalized.appointment_date ?? '');
+        const notes = firstValue(normalized.resumo_contacto, normalized.notes);
+        const appointmentDate = buildAppointmentDate(normalized, parsedDate);
         // Preserva linhas sem data, mas evita "agora" artificial (que distorcia ordenação por recência).
         const timestamp = parsedDate ? parsedDate.toISOString() : '';
 
@@ -158,9 +201,11 @@ const App: React.FC = () => {
           status: inferStatus({
             ...item,
             Comentários: notes,
-            'Data Primeira Consulta': appointmentDate
+            'Data Primeira Consulta': appointmentDate,
+            Enviar: normalized.send_flag,
+            Ligar: normalized.call_flag
           }),
-          isContacted: !!(normalized.contact_date || normalized.owner),
+          isContacted: !!(normalized.contact_date || normalized.owner || firstValue(normalized.call_flag)),
           notes,
           doctor: String(normalized.doctor || ''),
           appointmentDate,
@@ -208,15 +253,15 @@ const App: React.FC = () => {
 
       const payload = Array.isArray(data)
         ? data
-        : (data && typeof data === 'object' && (data as any).ok === true && Array.isArray((data as any).data)
-          ? (data as any).data
+        : (data && typeof data === 'object' && (data as any).ok === true
+          ? (Array.isArray((data as any).data) ? (data as any).data : (Array.isArray((data as any).leads) ? (data as any).leads : null))
           : null);
 
       if (!payload) {
         const apiError = data && typeof data === 'object' && (data as any).ok === false ? String((data as any).error || 'Erro da API') : null;
         throw {
           kind: 'schema',
-          message: apiError || 'Resposta válida mas em formato inesperado (esperado array ou {ok:true,data:[]}).'
+          message: apiError || 'Resposta válida mas em formato inesperado (esperado array, {ok:true,data:[]} ou {ok:true,leads:[]}).'
         } as FetchFailure;
       }
 

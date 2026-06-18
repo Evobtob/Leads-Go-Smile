@@ -1,31 +1,36 @@
-const SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
+const SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
 
-const REQUIRED_FIELDS = ['name', 'phone', 'email', 'date'];
+const REQUIRED_FIELDS = ['name', 'phone', 'email'];
 
 const FIELD_ALIASES = {
   row_number: ['row_number', 'row', 'id', 'lead_id', 'linha', 'line_number'],
   source: ['source', 'origem', 'canal', 'utm_source'],
   lead_quality: ['lead_quality', 'qualidade_lead', 'qualidade', 'status_lead', 'lead_status'],
   name: ['name', 'nome', 'lead_name', 'full_name', 'cliente', 'contact_name'],
-  phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1'],
+  phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1', 'número', 'numero'],
   email: ['email', 'e_mail', 'mail', 'email_address'],
   location: ['location', 'localizacao', 'cidade', 'regiao', 'bairro'],
   date: ['data', 'date', 'timestamp', 'created_at', '4', 'lead_created_at'],
-  notes: ['comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
+  speciality: ['especialidade', 'speciality', 'specialty'],
+  appointment_day: ['dia', 'day'],
+  appointment_month: ['mês', 'mes', 'month'],
+  appointment_hour: ['hora', 'hour'],
+  appointment_minute: ['minuto', 'minute'],
+  send_flag: ['enviar', 'send'],
+  call_flag: ['ligar', 'call'],
+  notes: ['notas', 'comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
+  campaign: ['campanha', 'campaign'],
+  ad_set: ['ad set', 'ad_set', 'adset'],
+  ad: ['ad', 'anuncio', 'anúncio'],
+  platform: ['plataforma', 'platform'],
   contact_date: ['data_contacto', 'data contato', 'contact_date', 'contacted_at'],
   owner: ['responsavel', 'responsável', 'owner', 'responsible'],
   doctor: ['medico', 'médico', 'doctor'],
   appointment_date: ['data_primeira_consulta', 'primeira_consulta', 'appointment_date', 'consulta', 'data_consulta'],
-  resumo_contacto: ['resumo_contacto', 'resumo contacto', 'resumo_de_contacto', 'resumo'],
   data_agendada: ['data_agendada', 'data agendada', 'agendada_em', 'appointment_scheduled_at'],
   value: ['valor_real_bruto', 'valor_fechado', 'valor', 'value', 'budget', 'amount'],
   status: ['status', 'estado'],
   treatment_date: ['data_tratamento', 'treatment_date']
-};
-
-const ENSURED_COLUMNS = {
-  resumo_contacto: 'Resumo Contacto',
-  data_agendada: 'Data Agendada'
 };
 
 function normalizeKey(key) {
@@ -59,15 +64,15 @@ function handleRequest_(e, method) {
       return jsonResponse({ ok: true, service: 'leads-go-smile-backend', sheetId: SHEET_ID, timestamp: new Date().toISOString() });
     }
 
-    if (method === 'GET' && action === 'leads') {
+    if (method === 'GET' && (action === 'leads' || action === 'getLeads')) {
       const leads = getLeads_();
-      return jsonResponse({ ok: true, count: leads.length, leads: leads });
+      return jsonResponse({ ok: true, count: leads.length, data: leads, leads: leads });
     }
 
-    if (method === 'POST' && action === 'update') {
-      const body = parseBody_(e);
+    if ((action === 'update' || action === 'updateLead') && (method === 'GET' || method === 'POST')) {
+      const body = parseBody_(e, method);
       const updated = updateLead_(body);
-      return jsonResponse({ ok: true, updated: updated });
+      return jsonResponse({ ok: true, data: updated, updated: updated });
     }
 
     return jsonResponse({ ok: false, error: `Ação inválida: ${method} ${action}` });
@@ -89,6 +94,7 @@ function getHeaderMap_(headers) {
 
   headers.forEach(function(header, idx) {
     const key = normalizeKey(header);
+    if (!key) return;
     available.push(key);
     Object.keys(FIELD_ALIASES).forEach(function(canonical) {
       if (canonicalToIndex[canonical] !== undefined) return;
@@ -98,6 +104,63 @@ function getHeaderMap_(headers) {
   });
 
   return { canonicalToIndex: canonicalToIndex, available: available };
+}
+
+function firstValue_() {
+  for (var i = 0; i < arguments.length; i++) {
+    const value = String(arguments[i] === null || arguments[i] === undefined ? '' : arguments[i]).trim();
+    if (value !== '') return value;
+  }
+  return '';
+}
+
+function parseDate_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return value;
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const nativeDate = new Date(text);
+  if (!isNaN(nativeDate.getTime())) return nativeDate;
+  const match = text.match(/^(\d{1,4})[\/\-.](\d{1,2})[\/\-.](\d{1,4})/);
+  if (!match) return null;
+  const p1 = match[1], p2 = match[2], p3 = match[3];
+  const year = p1.length === 4 ? Number(p1) : Number(p3);
+  const month = Number(p2);
+  const day = p1.length === 4 ? Number(p3) : Number(p1);
+  const date = new Date(year, month - 1, day);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function buildAppointmentDate_(item) {
+  const direct = firstValue_(item.data_agendada, item.appointment_date);
+  if (direct) return direct;
+
+  const day = Number(item.appointment_day);
+  const month = Number(item.appointment_month);
+  const hour = Number(item.appointment_hour);
+  const minute = Number(item.appointment_minute);
+  if ([day, month, hour, minute].some(function(n) { return isNaN(n); })) return '';
+
+  const leadDate = parseDate_(item.date);
+  const year = leadDate ? leadDate.getFullYear() : new Date().getFullYear();
+  const date = new Date(year, month - 1, day, hour, minute, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day || date.getHours() !== hour || date.getMinutes() !== minute) return '';
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+}
+
+function isMarked_(value) {
+  return ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].indexOf(String(value || '').trim().toLowerCase()) !== -1;
+}
+
+function inferStatus_(item) {
+  const notes = String(item.notes || '').toLowerCase();
+  const appointment = buildAppointmentDate_(item);
+  if (appointment || isMarked_(item.send_flag) || notes.indexOf('marcado') !== -1 || notes.indexOf('agendado') !== -1) return 'scheduled';
+
+  const discardKeywords = ['engano', 'não atende', 'não interessa', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'falecido'];
+  if (discardKeywords.some(function(key) { return notes.indexOf(key) !== -1; })) return 'discarded';
+
+  if (isMarked_(item.call_flag) || notes.indexOf('liguei') !== -1 || notes.indexOf('contactado') !== -1 || notes.indexOf('contactada') !== -1 || notes.indexOf('ligar mais tarde') !== -1) return 'contacted';
+  return 'new';
 }
 
 function getLeads_() {
@@ -115,9 +178,6 @@ function getLeads_() {
   }
 
   return rows
-    .filter(function(row) {
-      return row.some(function(cell) { return String(cell || '').trim() !== ''; });
-    })
     .map(function(row, i) {
       const item = {};
       Object.keys(FIELD_ALIASES).forEach(function(key) {
@@ -125,11 +185,26 @@ function getLeads_() {
         item[key] = idx === undefined ? '' : row[idx];
       });
       item.row_number = String(i + 2);
+      item.appointmentDate = buildAppointmentDate_(item);
+      item.status = inferStatus_(item);
       return item;
+    })
+    .filter(function(item) {
+      return firstValue_(item.name) && (firstValue_(item.phone) || firstValue_(item.email));
     });
 }
 
-function parseBody_(e) {
+function parseBody_(e, method) {
+  if (method === 'GET') {
+    const payload = e && e.parameter && e.parameter.payload;
+    if (!payload) throw new Error('Payload vazio no GET.');
+    try {
+      return JSON.parse(payload);
+    } catch (err) {
+      throw new Error('JSON inválido no payload GET.');
+    }
+  }
+
   const body = e && e.postData && e.postData.contents;
   if (!body) throw new Error('Body vazio no POST.');
   try {
@@ -148,15 +223,15 @@ function getColumnIndexByCanonical_(headers, canonical) {
   return -1;
 }
 
-function ensureColumns_(sheet, headers, canonicalToHeader) {
-  let nextColumn = headers.length + 1;
-  Object.keys(canonicalToHeader).forEach(function(canonical) {
-    const existing = getColumnIndexByCanonical_(headers, canonical);
-    if (existing !== -1) return;
-    sheet.getRange(1, nextColumn).setValue(canonicalToHeader[canonical]);
-    headers.push(canonicalToHeader[canonical]);
-    nextColumn += 1;
-  });
+function parseAppointmentParts_(value) {
+  const date = parseDate_(value);
+  if (!date) return null;
+  return {
+    appointment_day: date.getDate(),
+    appointment_month: date.getMonth() + 1,
+    appointment_hour: date.getHours(),
+    appointment_minute: date.getMinutes()
+  };
 }
 
 function updateLead_(body) {
@@ -168,19 +243,23 @@ function updateLead_(body) {
   if (rowNumber > lastRow) throw new Error('row_number fora do intervalo da folha.');
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  ensureColumns_(sheet, headers, ENSURED_COLUMNS);
+  const status = body.status || body.estado;
+  const appointmentValue = firstValue_(body.data_agendada, body.data_consulta, body.appointment_date);
+  const appointmentParts = appointmentValue ? parseAppointmentParts_(appointmentValue) : null;
 
   const updates = {
-    status: body.status || body.estado,
-    notes: body.comentario || body.notes,
-    doctor: body.medico || body.doctor,
-    appointment_date: body.data_consulta || body.appointment_date,
-    resumo_contacto: body.resumo_contacto || body.comentario || body.notes,
-    data_agendada: body.data_agendada || body.data_consulta || body.appointment_date,
-    value: body.valor_fechado || body.value,
-    treatment_date: body.data_tratamento || new Date().toISOString(),
-    contact_date: body.data_contacto || new Date().toISOString()
+    notes: firstValue_(body.comentario, body.notes, body.resumo_contacto)
   };
+
+  if (appointmentParts) {
+    updates.appointment_day = appointmentParts.appointment_day;
+    updates.appointment_month = appointmentParts.appointment_month;
+    updates.appointment_hour = appointmentParts.appointment_hour;
+    updates.appointment_minute = appointmentParts.appointment_minute;
+  }
+
+  if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
+  if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
 
   const applied = {};
   Object.keys(updates).forEach(function(key) {
@@ -193,7 +272,7 @@ function updateLead_(body) {
   });
 
   if (Object.keys(applied).length === 0) {
-    throw new Error('Nenhuma coluna compatível encontrada para atualizar.');
+    throw new Error('Nenhuma coluna existente compatível encontrada para atualizar. A folha não foi alterada.');
   }
 
   SpreadsheetApp.flush();

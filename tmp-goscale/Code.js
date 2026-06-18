@@ -10,28 +10,37 @@ const PREP_EMAIL_TO = 'geral@gosmile.pt';
 const PREP_EMAIL_NAME = 'Carla Pinho';
 
 // Leads-Go-Smile bridge (robusto)
-const LEADS_SHEET_ID = '18RbQhpBsG7DpIky1hF3TvhxC31CTEC_v-cGkpa1d6PI';
-const LEADS_REQUIRED_FIELDS = ['name', 'phone', 'email', 'date'];
+const LEADS_SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
+const LEADS_REQUIRED_FIELDS = ['name', 'phone', 'email'];
 const LEADS_ALIASES = {
   row_number: ['row_number', 'row', 'id', 'lead_id', 'linha', 'line_number'],
+  source: ['source', 'origem', 'canal', 'utm_source'],
+  lead_quality: ['lead_quality', 'qualidade_lead', 'qualidade', 'status_lead', 'lead_status'],
   name: ['name', 'nome', 'lead_name', 'full_name', 'cliente', 'contact_name'],
-  phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1'],
+  phone: ['phone', 'telefone', 'telemovel', 'celular', 'mobile', 'whatsapp', 'telefone_1', 'número', 'numero'],
   email: ['email', 'e_mail', 'mail', 'email_address'],
+  location: ['location', 'localizacao', 'cidade', 'regiao', 'bairro'],
   date: ['data', 'date', 'timestamp', 'created_at', '4', 'lead_created_at'],
-  notes: ['comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
+  speciality: ['especialidade', 'speciality', 'specialty'],
+  appointment_day: ['dia', 'day'],
+  appointment_month: ['mês', 'mes', 'month'],
+  appointment_hour: ['hora', 'hour'],
+  appointment_minute: ['minuto', 'minute'],
+  send_flag: ['enviar', 'send'],
+  call_flag: ['ligar', 'call'],
+  notes: ['notas', 'comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
+  campaign: ['campanha', 'campaign'],
+  ad_set: ['ad set', 'ad_set', 'adset'],
+  ad: ['ad', 'anuncio', 'anúncio'],
+  platform: ['plataforma', 'platform'],
   contact_date: ['data_contacto', 'data contato', 'contact_date', 'contacted_at'],
+  owner: ['responsavel', 'responsável', 'owner', 'responsible'],
   doctor: ['medico', 'médico', 'doctor'],
   appointment_date: ['data_primeira_consulta', 'primeira_consulta', 'appointment_date', 'consulta', 'data_consulta'],
-  resumo_contacto: ['resumo_contacto', 'resumo contacto', 'resumo_de_contacto', 'resumo'],
   data_agendada: ['data_agendada', 'data agendada', 'agendada_em', 'appointment_scheduled_at'],
   value: ['valor_real_bruto', 'valor_fechado', 'valor', 'value', 'budget', 'amount'],
   status: ['status', 'estado'],
   treatment_date: ['data_tratamento', 'treatment_date']
-};
-
-const LEADS_ENSURED_COLUMNS = {
-  resumo_contacto: 'Resumo Contacto',
-  data_agendada: 'Data Agendada'
 };
 
 function doGet(e) {
@@ -465,45 +474,61 @@ function findLeadColumn_(headers, canonical) {
   return -1;
 }
 
-function isLikelyDateValue_(value) {
-  if (value === null || value === undefined || value === '') return false;
-  if (Object.prototype.toString.call(value) === '[object Date]') {
-    return !isNaN(value.getTime());
+function firstLeadValue_() {
+  for (let i = 0; i < arguments.length; i++) {
+    const value = String(arguments[i] === null || arguments[i] === undefined ? '' : arguments[i]).trim();
+    if (value !== '') return value;
   }
-  if (typeof value === 'number') {
-    if (!isFinite(value)) return false;
-    return value > 1000000000 || (value >= 20000 && value <= 100000);
-  }
-  const text = String(value).trim();
-  if (!text) return false;
-  return !isNaN(new Date(text).getTime());
+  return '';
 }
 
-function detectDateColumnFromRows_(rows, maxColumns) {
-  if (!rows || !rows.length || !maxColumns) return -1;
-  const sampleSize = Math.min(rows.length, 50);
-  const maxCols = Math.min(maxColumns, rows[0].length || maxColumns);
-  let bestColumn = -1;
-  let bestScore = 0;
+function parseLeadDate_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return value;
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const nativeDate = new Date(text);
+  if (!isNaN(nativeDate.getTime())) return nativeDate;
+  const match = text.match(/^(\d{1,4})[\/\-.](\d{1,2})[\/\-.](\d{1,4})/);
+  if (!match) return null;
+  const p1 = match[1], p2 = match[2], p3 = match[3];
+  const year = p1.length === 4 ? Number(p1) : Number(p3);
+  const month = Number(p2);
+  const day = p1.length === 4 ? Number(p3) : Number(p1);
+  const date = new Date(year, month - 1, day);
+  return isNaN(date.getTime()) ? null : date;
+}
 
-  for (let c = 0; c < maxCols; c++) {
-    let hits = 0;
-    let nonEmpty = 0;
-    for (let r = 0; r < sampleSize; r++) {
-      const value = rows[r][c];
-      if (value === null || value === undefined || String(value).trim() === '') continue;
-      nonEmpty += 1;
-      if (isLikelyDateValue_(value)) hits += 1;
-    }
-    if (!nonEmpty) continue;
-    const score = hits / nonEmpty;
-    if (score > bestScore && score >= 0.6) {
-      bestScore = score;
-      bestColumn = c + 1;
-    }
-  }
+function buildLeadAppointmentDate_(item) {
+  const direct = firstLeadValue_(item.data_agendada, item.appointment_date);
+  if (direct) return direct;
 
-  return bestColumn;
+  const day = Number(item.appointment_day);
+  const month = Number(item.appointment_month);
+  const hour = Number(item.appointment_hour);
+  const minute = Number(item.appointment_minute);
+  if ([day, month, hour, minute].some((n) => isNaN(n))) return '';
+
+  const leadDate = parseLeadDate_(item.date);
+  const year = leadDate ? leadDate.getFullYear() : new Date().getFullYear();
+  const date = new Date(year, month - 1, day, hour, minute, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day || date.getHours() !== hour || date.getMinutes() !== minute) return '';
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+}
+
+function isLeadMarked_(value) {
+  return ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(String(value || '').trim().toLowerCase());
+}
+
+function inferLeadStatus_(item) {
+  const notes = String(item.notes || '').toLowerCase();
+  const appointment = buildLeadAppointmentDate_(item);
+  if (appointment || isLeadMarked_(item.send_flag) || notes.indexOf('marcado') !== -1 || notes.indexOf('agendado') !== -1) return 'scheduled';
+
+  const discardKeywords = ['engano', 'não atende', 'não interessa', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'falecido'];
+  if (discardKeywords.some((key) => notes.indexOf(key) !== -1)) return 'discarded';
+
+  if (isLeadMarked_(item.call_flag) || notes.indexOf('liguei') !== -1 || notes.indexOf('contactado') !== -1 || notes.indexOf('contactada') !== -1 || notes.indexOf('ligar mais tarde') !== -1) return 'contacted';
+  return 'new';
 }
 
 function getLeadsGoSmile_() {
@@ -514,61 +539,47 @@ function getLeadsGoSmile_() {
   const headers = data[0];
   const rows = data.slice(1);
   const missing = LEADS_REQUIRED_FIELDS.filter((f) => findLeadColumn_(headers, f) === -1);
-  const missingWithoutDate = missing.filter((f) => f !== 'date');
-  if (missingWithoutDate.length) throw new Error(`Fonte inválida: faltam campos obrigatórios [${missingWithoutDate.join(', ')}]`);
-
-  const dateColumn = findLeadColumn_(headers, 'date');
-  const contactDateColumn = findLeadColumn_(headers, 'contact_date');
-  const inferredDateColumn = detectDateColumnFromRows_(rows, headers.length);
-
-  // Prioridade de data:
-  // 1) coluna explícita de data (quando existir)
-  // 2) coluna inferida por amostragem (ex.: coluna A sem header com ISO timestamps)
-  // 3) coluna de data de contacto (último fallback)
-  //
-  // Motivo: algumas folhas têm "contacted_at" preenchido só para poucas linhas.
-  // Se usarmos contact_date antes da inferência, a maioria dos cards fica "Sem data"
-  // mesmo quando a coluna real de criação do lead está preenchida.
-  const fallbackDateColumn = dateColumn !== -1
-    ? dateColumn
-    : (inferredDateColumn !== -1
-      ? inferredDateColumn
-      : (contactDateColumn !== -1 ? contactDateColumn : -1));
+  if (missing.length) throw new Error(`Fonte inválida: faltam campos obrigatórios [${missing.join(', ')}]`);
 
   return rows
-    .filter((row) => row.some((cell) => String(cell || '').trim() !== ''))
     .map((row, idx) => {
       const item = { row_number: String(idx + 2) };
       Object.keys(LEADS_ALIASES).forEach((key) => {
         if (key === 'row_number') return;
-        const col = key === 'date' ? fallbackDateColumn : findLeadColumn_(headers, key);
+        const col = findLeadColumn_(headers, key);
         item[key] = col === -1 ? '' : row[col - 1];
       });
+      item.appointmentDate = buildLeadAppointmentDate_(item);
+      item.status = inferLeadStatus_(item);
       return item;
-    });
+    })
+    .filter((item) => firstLeadValue_(item.name) && (firstLeadValue_(item.phone) || firstLeadValue_(item.email)));
 }
 
 function debugLeadsHeaders_() {
   const sheet = getLeadsSheet_();
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const rows = sheet.getDataRange().getValues().slice(1);
+  const mapped = {};
+  Object.keys(LEADS_ALIASES).forEach((key) => {
+    mapped[key] = findLeadColumn_(headers, key);
+  });
   return {
+    sheetId: LEADS_SHEET_ID,
     headers: headers,
     normalized: headers.map(normalizeLeadKey_),
-    detectedDateColumn: findLeadColumn_(headers, 'date'),
-    inferredDateColumn: detectDateColumnFromRows_(rows, headers.length)
+    mapped: mapped
   };
 }
 
-function ensureLeadColumns_(sheet, headers, canonicalToHeader) {
-  let nextColumn = headers.length + 1;
-  Object.keys(canonicalToHeader).forEach((canonical) => {
-    const existing = findLeadColumn_(headers, canonical);
-    if (existing !== -1) return;
-    sheet.getRange(1, nextColumn).setValue(canonicalToHeader[canonical]);
-    headers.push(canonicalToHeader[canonical]);
-    nextColumn += 1;
-  });
+function parseLeadAppointmentParts_(value) {
+  const date = parseLeadDate_(value);
+  if (!date) return null;
+  return {
+    appointment_day: date.getDate(),
+    appointment_month: date.getMonth() + 1,
+    appointment_hour: date.getHours(),
+    appointment_minute: date.getMinutes()
+  };
 }
 
 function updateLeadGoSmile_(payload) {
@@ -579,18 +590,22 @@ function updateLeadGoSmile_(payload) {
   if (rowNumber > sheet.getLastRow()) throw new Error('row_number fora do intervalo.');
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  ensureLeadColumns_(sheet, headers, LEADS_ENSURED_COLUMNS);
+  const status = payload.status || payload.estado;
+  const appointmentValue = firstLeadValue_(payload.data_agendada, payload.data_consulta, payload.appointment_date);
+  const appointmentParts = appointmentValue ? parseLeadAppointmentParts_(appointmentValue) : null;
   const updates = {
-    status: payload.status || payload.estado,
-    notes: payload.comentario || payload.notes,
-    doctor: payload.medico || payload.doctor,
-    appointment_date: payload.data_consulta || payload.appointment_date,
-    resumo_contacto: payload.resumo_contacto || payload.comentario || payload.notes,
-    data_agendada: payload.data_agendada || payload.data_consulta || payload.appointment_date,
-    value: payload.valor_fechado || payload.value,
-    treatment_date: payload.data_tratamento || new Date().toISOString(),
-    contact_date: payload.data_contacto || new Date().toISOString()
+    notes: firstLeadValue_(payload.comentario, payload.notes, payload.resumo_contacto)
   };
+
+  if (appointmentParts) {
+    updates.appointment_day = appointmentParts.appointment_day;
+    updates.appointment_month = appointmentParts.appointment_month;
+    updates.appointment_hour = appointmentParts.appointment_hour;
+    updates.appointment_minute = appointmentParts.appointment_minute;
+  }
+
+  if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
+  if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
 
   const applied = {};
   Object.keys(updates).forEach((key) => {
@@ -602,7 +617,7 @@ function updateLeadGoSmile_(payload) {
     applied[key] = value;
   });
 
-  if (!Object.keys(applied).length) throw new Error('Nenhuma coluna compatível para atualizar.');
+  if (!Object.keys(applied).length) throw new Error('Nenhuma coluna existente compatível encontrada para atualizar. A folha não foi alterada.');
   SpreadsheetApp.flush();
   return { row_number: rowNumber, fields: applied };
 }
