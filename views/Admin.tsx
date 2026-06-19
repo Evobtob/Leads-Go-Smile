@@ -19,7 +19,7 @@ const Admin: React.FC<AdminProps> = ({ settings, onUpdateSettings, leads, onUpda
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'admin') {
+    if (username === 'bruno' && password === 'pass2006') {
       setIsLoggedIn(true);
     } else {
       alert('Credenciais inválidas');
