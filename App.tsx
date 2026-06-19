@@ -89,6 +89,7 @@ const App: React.FC = () => {
     appointment_minute: ['minuto', 'minute'],
     send_flag: ['enviar', 'send'],
     call_flag: ['ligar', 'call'],
+    discarded_flag: ['descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
     campaign: ['campanha', 'campaign'],
     ad_set: ['ad set', 'ad_set', 'adset'],
     ad: ['ad', 'anuncio', 'anúncio'],
@@ -154,6 +155,8 @@ const App: React.FC = () => {
     return String(found ?? '').trim();
   };
 
+  const isMarked = (value: unknown): boolean => ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(String(value ?? '').trim().toLowerCase());
+
   const buildAppointmentDate = (normalized: Record<string, unknown>, leadDate: Date | null): string => {
     const direct = firstValue(normalized.data_agendada, normalized.appointment_date);
     if (direct) return direct;
@@ -191,12 +194,15 @@ const App: React.FC = () => {
         // Preserva linhas sem data, mas evita "agora" artificial (que distorcia ordenação por recência).
         const timestamp = parsedDate ? parsedDate.toISOString() : '';
 
-        const status = normalizeLeadStatus(normalized.status) || inferStatus({
+        const status = isMarked(normalized.discarded_flag)
+          ? 'discarded'
+          : normalizeLeadStatus(normalized.status) || inferStatus({
           ...item,
           Comentários: notes,
           'Data Primeira Consulta': appointmentDate,
           Enviar: normalized.send_flag,
           Ligar: normalized.call_flag,
+          discarded_flag: normalized.discarded_flag,
           status: normalized.status
         });
 
@@ -382,6 +388,7 @@ const App: React.FC = () => {
         data_consulta: extraData?.data_consulta || updates.appointmentDate,
         data_agendada: extraData?.data_agendada || extraData?.data_consulta || updates.appointmentDate,
         valor_fechado: extraData?.valor_fechado !== undefined ? extraData.valor_fechado : updates.value,
+        descartada: (updates.status || lead.status) === 'discarded' ? '✅' : undefined,
         data_tratamento: formattedNow
       };
 

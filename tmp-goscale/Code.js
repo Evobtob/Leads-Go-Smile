@@ -12,6 +12,7 @@ const PREP_EMAIL_NAME = 'Carla Pinho';
 // Leads-Go-Smile bridge (robusto)
 const LEADS_SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
 const LEADS_REQUIRED_FIELDS = ['name', 'phone', 'email'];
+const LEADS_DISCARDED_HEADER = 'Descartada';
 const LEADS_ALIASES = {
   row_number: ['row_number', 'row', 'id', 'lead_id', 'linha', 'line_number'],
   source: ['source', 'origem', 'canal', 'utm_source'],
@@ -28,6 +29,7 @@ const LEADS_ALIASES = {
   appointment_minute: ['minuto', 'minute'],
   send_flag: ['enviar', 'send'],
   call_flag: ['ligar', 'call'],
+  discarded_flag: ['descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
   notes: ['notas', 'comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
   campaign: ['campanha', 'campaign'],
   ad_set: ['ad set', 'ad_set', 'adset'],
@@ -474,6 +476,21 @@ function findLeadColumn_(headers, canonical) {
   return -1;
 }
 
+function ensureLeadsDiscardedHeader_(sheet) {
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) {
+    sheet.getRange(1, 1).setValue(LEADS_DISCARDED_HEADER);
+    return [LEADS_DISCARDED_HEADER];
+  }
+
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  if (findLeadColumn_(headers, 'discarded_flag') !== -1) return headers;
+
+  sheet.getRange(1, lastColumn + 1).setValue(LEADS_DISCARDED_HEADER);
+  headers.push(LEADS_DISCARDED_HEADER);
+  return headers;
+}
+
 function firstLeadValue_() {
   for (let i = 0; i < arguments.length; i++) {
     const value = String(arguments[i] === null || arguments[i] === undefined ? '' : arguments[i]).trim();
@@ -534,6 +551,8 @@ function normalizeLeadStatusValue_(value) {
 }
 
 function inferLeadStatus_(item) {
+  if (isLeadMarked_(item.discarded_flag) || isLeadMarked_(item.descartada)) return 'discarded';
+
   const explicitStatus = normalizeLeadStatusValue_(item.status || item.estado);
   if (explicitStatus) return explicitStatus;
 
@@ -557,10 +576,11 @@ function inferLeadStatus_(item) {
 
 function getLeadsGoSmile_() {
   const sheet = getLeadsSheet_();
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
+  const headers = ensureLeadsDiscardedHeader_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
 
-  const headers = data[0];
+  const data = sheet.getRange(1, 1, lastRow, headers.length).getValues();
   const rows = data.slice(1);
   const missing = LEADS_REQUIRED_FIELDS.filter((f) => findLeadColumn_(headers, f) === -1);
   if (missing.length) throw new Error(`Fonte inválida: faltam campos obrigatórios [${missing.join(', ')}]`);
@@ -582,7 +602,7 @@ function getLeadsGoSmile_() {
 
 function debugLeadsHeaders_() {
   const sheet = getLeadsSheet_();
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headers = ensureLeadsDiscardedHeader_(sheet);
   const mapped = {};
   Object.keys(LEADS_ALIASES).forEach((key) => {
     mapped[key] = findLeadColumn_(headers, key);
@@ -632,7 +652,7 @@ function updateLeadGoSmile_(payload) {
   const sheet = getLeadsSheet_();
   if (rowNumber > sheet.getLastRow()) throw new Error('row_number fora do intervalo.');
 
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headers = ensureLeadsDiscardedHeader_(sheet);
   const status = payload.status || payload.estado;
   const appointmentValue = firstLeadValue_(payload.data_agendada, payload.data_consulta, payload.appointment_date);
   const appointmentParts = appointmentValue ? parseLeadAppointmentParts_(appointmentValue) : null;
@@ -650,7 +670,10 @@ function updateLeadGoSmile_(payload) {
 
   if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
   if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
-  if (normalizeLeadStatusValue_(status) === 'discarded') updates.call_flag = '✅';
+  if (normalizeLeadStatusValue_(status) === 'discarded') {
+    updates.call_flag = '✅';
+    updates.discarded_flag = '✅';
+  }
 
   const applied = {};
   Object.keys(updates).forEach((key) => {

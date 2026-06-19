@@ -179,6 +179,10 @@ export const formatCurrency = (value: number): string => {
 };
 
 export const inferStatus = (item: any): any => {
+  const isMarked = (value: string): boolean => ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(value);
+  const discardedFlag = String(item.discarded_flag || item.descartada || item.Descartada || '').trim().toLowerCase();
+  if (isMarked(discardedFlag)) return 'discarded';
+
   const explicitStatus = normalizeLeadStatus(item.status || item.estado || item.Estado || item['[STATUS]']);
   if (explicitStatus) return explicitStatus;
 
@@ -186,8 +190,6 @@ export const inferStatus = (item: any): any => {
   const appointment = String(item['Data Primeira Consulta'] || item.appointmentDate || item.data_agendada || '').trim();
   const sendFlag = String(item.Enviar || item.enviar || item.send_flag || '').trim().toLowerCase();
   const callFlag = String(item.Ligar || item.ligar || item.call_flag || '').trim().toLowerCase();
-
-  const isMarked = (value: string): boolean => ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(value);
 
   const statusMarker = notes.match(/\[status\s*:\s*(new|contacted|discarded|scheduled|positive|completed|paid)\]/i);
   if (statusMarker) {

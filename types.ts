@@ -35,6 +35,7 @@ export interface LeadUpdatePayload {
   data_consulta?: string;
   data_agendada?: string;
   valor_fechado?: number;
+  descartada?: string;
   status: LeadStatus;
   data_tratamento?: string; // Data e hora da ação na app
 }

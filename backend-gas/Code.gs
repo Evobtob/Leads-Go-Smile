@@ -1,4 +1,5 @@
 const SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
+const DISCARDED_HEADER = 'Descartada';
 
 const REQUIRED_FIELDS = ['name', 'phone', 'email'];
 
@@ -18,6 +19,7 @@ const FIELD_ALIASES = {
   appointment_minute: ['minuto', 'minute'],
   send_flag: ['enviar', 'send'],
   call_flag: ['ligar', 'call'],
+  discarded_flag: ['descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
   notes: ['notas', 'comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
   campaign: ['campanha', 'campaign'],
   ad_set: ['ad set', 'ad_set', 'adset'],
@@ -106,6 +108,21 @@ function getHeaderMap_(headers) {
   return { canonicalToIndex: canonicalToIndex, available: available };
 }
 
+function ensureDiscardedHeader_(sheet) {
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) {
+    sheet.getRange(1, 1).setValue(DISCARDED_HEADER);
+    return [DISCARDED_HEADER];
+  }
+
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  if (getColumnIndexByCanonical_(headers, 'discarded_flag') !== -1) return headers;
+
+  sheet.getRange(1, lastColumn + 1).setValue(DISCARDED_HEADER);
+  headers.push(DISCARDED_HEADER);
+  return headers;
+}
+
 function firstValue_() {
   for (var i = 0; i < arguments.length; i++) {
     const value = String(arguments[i] === null || arguments[i] === undefined ? '' : arguments[i]).trim();
@@ -166,6 +183,8 @@ function normalizeStatus_(value) {
 }
 
 function inferStatus_(item) {
+  if (isMarked_(item.discarded_flag) || isMarked_(item.descartada)) return 'discarded';
+
   const explicitStatus = normalizeStatus_(item.status || item.estado);
   if (explicitStatus) return explicitStatus;
 
@@ -189,10 +208,11 @@ function inferStatus_(item) {
 
 function getLeads_() {
   const sheet = getSheet_();
-  const values = sheet.getDataRange().getValues();
-  if (!values || values.length < 2) return [];
+  const headers = ensureDiscardedHeader_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
 
-  const headers = values[0];
+  const values = sheet.getRange(1, 1, lastRow, headers.length).getValues();
   const rows = values.slice(1);
   const map = getHeaderMap_(headers);
 
@@ -285,7 +305,7 @@ function updateLead_(body) {
   const lastRow = sheet.getLastRow();
   if (rowNumber > lastRow) throw new Error('row_number fora do intervalo da folha.');
 
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headers = ensureDiscardedHeader_(sheet);
   const status = body.status || body.estado;
   const appointmentValue = firstValue_(body.data_agendada, body.data_consulta, body.appointment_date);
   const appointmentParts = appointmentValue ? parseAppointmentParts_(appointmentValue) : null;
@@ -304,7 +324,10 @@ function updateLead_(body) {
 
   if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
   if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
-  if (normalizeStatus_(status) === 'discarded') updates.call_flag = '✅';
+  if (normalizeStatus_(status) === 'discarded') {
+    updates.call_flag = '✅';
+    updates.discarded_flag = '✅';
+  }
 
   const applied = {};
   Object.keys(updates).forEach(function(key) {
