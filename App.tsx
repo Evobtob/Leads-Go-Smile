@@ -89,7 +89,8 @@ const App: React.FC = () => {
     appointment_minute: ['minuto', 'minute'],
     send_flag: ['enviar', 'send'],
     call_flag: ['ligar', 'call'],
-    discarded_flag: ['descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
+    discarded_flag: ['descartadas', 'descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
+    scheduled_flag: ['agendadas', 'agendada', 'agendado', 'scheduled_flag', 'scheduled', 'agendamento', 'visitas'],
     campaign: ['campanha', 'campaign'],
     ad_set: ['ad set', 'ad_set', 'adset'],
     ad: ['ad', 'anuncio', 'anúncio'],
@@ -106,7 +107,22 @@ const App: React.FC = () => {
 
   const normalizeRow = (item: Record<string, unknown>): Record<string, unknown> => {
     return Object.entries(item).reduce<Record<string, unknown>>((acc, [rawKey, value]) => {
-      const canonicalKey = aliasToCanonical[normalizeKey(rawKey)] || normalizeKey(rawKey);
+      const normalizedRawKey = normalizeKey(rawKey);
+      const canonicalKey = aliasToCanonical[normalizedRawKey] || normalizedRawKey;
+      if (canonicalKey === 'discarded_flag' && normalizedRawKey === 'descartadas') {
+        acc[canonicalKey] = value;
+        return acc;
+      }
+      if (canonicalKey === 'scheduled_flag' && normalizedRawKey === 'agendadas') {
+        acc[canonicalKey] = value;
+        return acc;
+      }
+      if (canonicalKey === 'discarded_flag' && Object.prototype.hasOwnProperty.call(acc, canonicalKey)) {
+        return acc;
+      }
+      if (canonicalKey === 'scheduled_flag' && Object.prototype.hasOwnProperty.call(acc, canonicalKey)) {
+        return acc;
+      }
       if (acc[canonicalKey] === undefined || acc[canonicalKey] === null || acc[canonicalKey] === '') {
         acc[canonicalKey] = value;
       }
@@ -196,13 +212,16 @@ const App: React.FC = () => {
 
         const status = isMarked(normalized.discarded_flag)
           ? 'discarded'
-          : normalizeLeadStatus(normalized.status) || inferStatus({
+          : isMarked(normalized.scheduled_flag)
+            ? 'scheduled'
+            : normalizeLeadStatus(normalized.status) || inferStatus({
           ...item,
           Comentários: notes,
           'Data Primeira Consulta': appointmentDate,
           Enviar: normalized.send_flag,
           Ligar: normalized.call_flag,
           discarded_flag: normalized.discarded_flag,
+          scheduled_flag: normalized.scheduled_flag,
           status: normalized.status
         });
 
@@ -388,7 +407,8 @@ const App: React.FC = () => {
         data_consulta: extraData?.data_consulta || updates.appointmentDate,
         data_agendada: extraData?.data_agendada || extraData?.data_consulta || updates.appointmentDate,
         valor_fechado: extraData?.valor_fechado !== undefined ? extraData.valor_fechado : updates.value,
-        descartada: (updates.status || lead.status) === 'discarded' ? '✅' : undefined,
+        descartadas: (updates.status || lead.status) === 'discarded' ? '✅' : undefined,
+        agendadas: (updates.status || lead.status) === 'scheduled' ? '✅' : undefined,
         data_tratamento: formattedNow
       };
 

@@ -1,5 +1,6 @@
 const SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
-const DISCARDED_HEADER = 'Descartada';
+const DISCARDED_HEADER = 'Descartadas';
+const SCHEDULED_HEADER = 'Agendadas';
 
 const REQUIRED_FIELDS = ['name', 'phone', 'email'];
 
@@ -19,7 +20,8 @@ const FIELD_ALIASES = {
   appointment_minute: ['minuto', 'minute'],
   send_flag: ['enviar', 'send'],
   call_flag: ['ligar', 'call'],
-  discarded_flag: ['descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
+  discarded_flag: ['descartadas', 'descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
+  scheduled_flag: ['agendadas', 'agendada', 'agendado', 'scheduled_flag', 'scheduled', 'agendamento', 'visitas'],
   notes: ['notas', 'comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
   campaign: ['campanha', 'campaign'],
   ad_set: ['ad set', 'ad_set', 'adset'],
@@ -105,21 +107,36 @@ function getHeaderMap_(headers) {
     });
   });
 
+  const preferredDiscardedColumn = getColumnIndexByCanonical_(headers, 'discarded_flag');
+  if (preferredDiscardedColumn !== -1) canonicalToIndex.discarded_flag = preferredDiscardedColumn - 1;
+  const preferredScheduledColumn = getColumnIndexByCanonical_(headers, 'scheduled_flag');
+  if (preferredScheduledColumn !== -1) canonicalToIndex.scheduled_flag = preferredScheduledColumn - 1;
+
   return { canonicalToIndex: canonicalToIndex, available: available };
 }
 
-function ensureDiscardedHeader_(sheet) {
+function ensureStatusFlagHeaders_(sheet) {
   const lastColumn = sheet.getLastColumn();
   if (lastColumn < 1) {
     sheet.getRange(1, 1).setValue(DISCARDED_HEADER);
-    return [DISCARDED_HEADER];
+    sheet.getRange(1, 2).setValue(SCHEDULED_HEADER);
+    return [DISCARDED_HEADER, SCHEDULED_HEADER];
   }
 
   const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  if (getColumnIndexByCanonical_(headers, 'discarded_flag') !== -1) return headers;
+  let nextColumn = lastColumn + 1;
 
-  sheet.getRange(1, lastColumn + 1).setValue(DISCARDED_HEADER);
-  headers.push(DISCARDED_HEADER);
+  if (getColumnIndexByCanonical_(headers, 'discarded_flag') === -1) {
+    sheet.getRange(1, nextColumn).setValue(DISCARDED_HEADER);
+    headers.push(DISCARDED_HEADER);
+    nextColumn += 1;
+  }
+
+  if (getColumnIndexByCanonical_(headers, 'scheduled_flag') === -1) {
+    sheet.getRange(1, nextColumn).setValue(SCHEDULED_HEADER);
+    headers.push(SCHEDULED_HEADER);
+  }
+
   return headers;
 }
 
@@ -175,7 +192,7 @@ function normalizeStatus_(value) {
     contacted: 'contacted', contactado: 'contacted', contactada: 'contacted',
     positive: 'positive', positivo: 'positive', positiva: 'positive',
     discarded: 'discarded', descartado: 'discarded', descartada: 'discarded', nao_interessada: 'discarded', nao_interessado: 'discarded',
-    scheduled: 'scheduled', agendado: 'scheduled', agendada: 'scheduled', marcado: 'scheduled', marcada: 'scheduled',
+    scheduled: 'scheduled', agendamento: 'scheduled', agendado: 'scheduled', agendada: 'scheduled', agendadas: 'scheduled', marcado: 'scheduled', marcada: 'scheduled',
     completed: 'completed', concluido: 'completed', concluida: 'completed', fechado: 'completed', fechada: 'completed', venda_fechada: 'completed',
     paid: 'paid', pago: 'paid', paga: 'paid'
   };
@@ -183,7 +200,8 @@ function normalizeStatus_(value) {
 }
 
 function inferStatus_(item) {
-  if (isMarked_(item.discarded_flag) || isMarked_(item.descartada)) return 'discarded';
+  if (isMarked_(item.discarded_flag) || isMarked_(item.descartadas) || isMarked_(item.descartada)) return 'discarded';
+  if (isMarked_(item.scheduled_flag) || isMarked_(item.agendadas) || isMarked_(item.agendada)) return 'scheduled';
 
   const explicitStatus = normalizeStatus_(item.status || item.estado);
   if (explicitStatus) return explicitStatus;
@@ -208,7 +226,7 @@ function inferStatus_(item) {
 
 function getLeads_() {
   const sheet = getSheet_();
-  const headers = ensureDiscardedHeader_(sheet);
+  const headers = ensureStatusFlagHeaders_(sheet);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
@@ -261,6 +279,16 @@ function parseBody_(e, method) {
 function getColumnIndexByCanonical_(headers, canonical) {
   const aliases = FIELD_ALIASES[canonical] || [canonical];
   const normalizedAliases = aliases.map(normalizeKey);
+  if (canonical === 'discarded_flag') {
+    for (var preferred = 0; preferred < headers.length; preferred++) {
+      if (normalizeKey(headers[preferred]) === normalizeKey(DISCARDED_HEADER)) return preferred + 1;
+    }
+  }
+  if (canonical === 'scheduled_flag') {
+    for (var preferredScheduled = 0; preferredScheduled < headers.length; preferredScheduled++) {
+      if (normalizeKey(headers[preferredScheduled]) === normalizeKey(SCHEDULED_HEADER)) return preferredScheduled + 1;
+    }
+  }
   for (var i = 0; i < headers.length; i++) {
     if (normalizedAliases.indexOf(normalizeKey(headers[i])) !== -1) return i + 1;
   }
@@ -305,7 +333,7 @@ function updateLead_(body) {
   const lastRow = sheet.getLastRow();
   if (rowNumber > lastRow) throw new Error('row_number fora do intervalo da folha.');
 
-  const headers = ensureDiscardedHeader_(sheet);
+  const headers = ensureStatusFlagHeaders_(sheet);
   const status = body.status || body.estado;
   const appointmentValue = firstValue_(body.data_agendada, body.data_consulta, body.appointment_date);
   const appointmentParts = appointmentValue ? parseAppointmentParts_(appointmentValue) : null;
@@ -322,7 +350,10 @@ function updateLead_(body) {
     updates.appointment_minute = appointmentParts.appointment_minute;
   }
 
-  if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
+  if (normalizeStatus_(status) === 'scheduled' || appointmentValue) {
+    updates.send_flag = 'X';
+    updates.scheduled_flag = '✅';
+  }
   if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
   if (normalizeStatus_(status) === 'discarded') {
     updates.call_flag = '✅';

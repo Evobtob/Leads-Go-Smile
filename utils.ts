@@ -23,11 +23,14 @@ export const normalizeLeadStatus = (raw: unknown): Lead['status'] | null => {
     discarded: 'discarded',
     descartado: 'discarded',
     descartada: 'discarded',
+    descartadas: 'discarded',
     nao_interessada: 'discarded',
     nao_interessado: 'discarded',
     scheduled: 'scheduled',
+    agendamento: 'scheduled',
     agendado: 'scheduled',
     agendada: 'scheduled',
+    agendadas: 'scheduled',
     marcado: 'scheduled',
     marcada: 'scheduled',
     completed: 'completed',
@@ -180,8 +183,11 @@ export const formatCurrency = (value: number): string => {
 
 export const inferStatus = (item: any): any => {
   const isMarked = (value: string): boolean => ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(value);
-  const discardedFlag = String(item.discarded_flag || item.descartada || item.Descartada || '').trim().toLowerCase();
+  const discardedFlag = String(item.discarded_flag || item.descartadas || item.Descartadas || item.descartada || item.Descartada || '').trim().toLowerCase();
   if (isMarked(discardedFlag)) return 'discarded';
+
+  const scheduledFlag = String(item.scheduled_flag || item.agendadas || item.Agendadas || item.agendada || item.Agendada || '').trim().toLowerCase();
+  if (isMarked(scheduledFlag)) return 'scheduled';
 
   const explicitStatus = normalizeLeadStatus(item.status || item.estado || item.Estado || item['[STATUS]']);
   if (explicitStatus) return explicitStatus;

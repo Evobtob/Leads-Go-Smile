@@ -12,7 +12,8 @@ const PREP_EMAIL_NAME = 'Carla Pinho';
 // Leads-Go-Smile bridge (robusto)
 const LEADS_SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
 const LEADS_REQUIRED_FIELDS = ['name', 'phone', 'email'];
-const LEADS_DISCARDED_HEADER = 'Descartada';
+const LEADS_DISCARDED_HEADER = 'Descartadas';
+const LEADS_SCHEDULED_HEADER = 'Agendadas';
 const LEADS_ALIASES = {
   row_number: ['row_number', 'row', 'id', 'lead_id', 'linha', 'line_number'],
   source: ['source', 'origem', 'canal', 'utm_source'],
@@ -29,7 +30,8 @@ const LEADS_ALIASES = {
   appointment_minute: ['minuto', 'minute'],
   send_flag: ['enviar', 'send'],
   call_flag: ['ligar', 'call'],
-  discarded_flag: ['descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
+  discarded_flag: ['descartadas', 'descartada', 'descartado', 'discarded_flag', 'discarded', 'lixo', 'trash'],
+  scheduled_flag: ['agendadas', 'agendada', 'agendado', 'scheduled_flag', 'scheduled', 'agendamento', 'visitas'],
   notes: ['notas', 'comentarios', 'comentários', 'comments', 'notes', 'observacoes', 'observações'],
   campaign: ['campanha', 'campaign'],
   ad_set: ['ad set', 'ad_set', 'adset'],
@@ -470,24 +472,44 @@ function getLeadsSheet_() {
 
 function findLeadColumn_(headers, canonical) {
   const aliases = (LEADS_ALIASES[canonical] || [canonical]).map(normalizeLeadKey_);
+  if (canonical === 'discarded_flag') {
+    for (let preferred = 0; preferred < headers.length; preferred++) {
+      if (normalizeLeadKey_(headers[preferred]) === normalizeLeadKey_(LEADS_DISCARDED_HEADER)) return preferred + 1;
+    }
+  }
+  if (canonical === 'scheduled_flag') {
+    for (let preferredScheduled = 0; preferredScheduled < headers.length; preferredScheduled++) {
+      if (normalizeLeadKey_(headers[preferredScheduled]) === normalizeLeadKey_(LEADS_SCHEDULED_HEADER)) return preferredScheduled + 1;
+    }
+  }
   for (let i = 0; i < headers.length; i++) {
     if (aliases.includes(normalizeLeadKey_(headers[i]))) return i + 1;
   }
   return -1;
 }
 
-function ensureLeadsDiscardedHeader_(sheet) {
+function ensureLeadsStatusFlagHeaders_(sheet) {
   const lastColumn = sheet.getLastColumn();
   if (lastColumn < 1) {
     sheet.getRange(1, 1).setValue(LEADS_DISCARDED_HEADER);
-    return [LEADS_DISCARDED_HEADER];
+    sheet.getRange(1, 2).setValue(LEADS_SCHEDULED_HEADER);
+    return [LEADS_DISCARDED_HEADER, LEADS_SCHEDULED_HEADER];
   }
 
   const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  if (findLeadColumn_(headers, 'discarded_flag') !== -1) return headers;
+  let nextColumn = lastColumn + 1;
 
-  sheet.getRange(1, lastColumn + 1).setValue(LEADS_DISCARDED_HEADER);
-  headers.push(LEADS_DISCARDED_HEADER);
+  if (findLeadColumn_(headers, 'discarded_flag') === -1) {
+    sheet.getRange(1, nextColumn).setValue(LEADS_DISCARDED_HEADER);
+    headers.push(LEADS_DISCARDED_HEADER);
+    nextColumn += 1;
+  }
+
+  if (findLeadColumn_(headers, 'scheduled_flag') === -1) {
+    sheet.getRange(1, nextColumn).setValue(LEADS_SCHEDULED_HEADER);
+    headers.push(LEADS_SCHEDULED_HEADER);
+  }
+
   return headers;
 }
 
@@ -543,7 +565,7 @@ function normalizeLeadStatusValue_(value) {
     contacted: 'contacted', contactado: 'contacted', contactada: 'contacted',
     positive: 'positive', positivo: 'positive', positiva: 'positive',
     discarded: 'discarded', descartado: 'discarded', descartada: 'discarded', nao_interessada: 'discarded', nao_interessado: 'discarded',
-    scheduled: 'scheduled', agendado: 'scheduled', agendada: 'scheduled', marcado: 'scheduled', marcada: 'scheduled',
+    scheduled: 'scheduled', agendamento: 'scheduled', agendado: 'scheduled', agendada: 'scheduled', agendadas: 'scheduled', marcado: 'scheduled', marcada: 'scheduled',
     completed: 'completed', concluido: 'completed', concluida: 'completed', fechado: 'completed', fechada: 'completed', venda_fechada: 'completed',
     paid: 'paid', pago: 'paid', paga: 'paid'
   };
@@ -551,7 +573,8 @@ function normalizeLeadStatusValue_(value) {
 }
 
 function inferLeadStatus_(item) {
-  if (isLeadMarked_(item.discarded_flag) || isLeadMarked_(item.descartada)) return 'discarded';
+  if (isLeadMarked_(item.discarded_flag) || isLeadMarked_(item.descartadas) || isLeadMarked_(item.descartada)) return 'discarded';
+  if (isLeadMarked_(item.scheduled_flag) || isLeadMarked_(item.agendadas) || isLeadMarked_(item.agendada)) return 'scheduled';
 
   const explicitStatus = normalizeLeadStatusValue_(item.status || item.estado);
   if (explicitStatus) return explicitStatus;
@@ -576,7 +599,7 @@ function inferLeadStatus_(item) {
 
 function getLeadsGoSmile_() {
   const sheet = getLeadsSheet_();
-  const headers = ensureLeadsDiscardedHeader_(sheet);
+  const headers = ensureLeadsStatusFlagHeaders_(sheet);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
@@ -602,7 +625,7 @@ function getLeadsGoSmile_() {
 
 function debugLeadsHeaders_() {
   const sheet = getLeadsSheet_();
-  const headers = ensureLeadsDiscardedHeader_(sheet);
+  const headers = ensureLeadsStatusFlagHeaders_(sheet);
   const mapped = {};
   Object.keys(LEADS_ALIASES).forEach((key) => {
     mapped[key] = findLeadColumn_(headers, key);
@@ -652,7 +675,7 @@ function updateLeadGoSmile_(payload) {
   const sheet = getLeadsSheet_();
   if (rowNumber > sheet.getLastRow()) throw new Error('row_number fora do intervalo.');
 
-  const headers = ensureLeadsDiscardedHeader_(sheet);
+  const headers = ensureLeadsStatusFlagHeaders_(sheet);
   const status = payload.status || payload.estado;
   const appointmentValue = firstLeadValue_(payload.data_agendada, payload.data_consulta, payload.appointment_date);
   const appointmentParts = appointmentValue ? parseLeadAppointmentParts_(appointmentValue) : null;
@@ -668,7 +691,10 @@ function updateLeadGoSmile_(payload) {
     updates.appointment_minute = appointmentParts.appointment_minute;
   }
 
-  if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
+  if (normalizeLeadStatusValue_(status) === 'scheduled' || appointmentValue) {
+    updates.send_flag = 'X';
+    updates.scheduled_flag = '✅';
+  }
   if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
   if (normalizeLeadStatusValue_(status) === 'discarded') {
     updates.call_flag = '✅';
