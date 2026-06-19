@@ -1,6 +1,49 @@
 
 import { Lead } from './types';
 
+export const normalizeLeadStatus = (raw: unknown): Lead['status'] | null => {
+  const value = String(raw ?? '').trim().toLowerCase();
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const aliases: Record<string, Lead['status']> = {
+    new: 'new',
+    novo: 'new',
+    nova: 'new',
+    contacted: 'contacted',
+    contactado: 'contacted',
+    contactada: 'contacted',
+    contactada_ligar: 'contacted',
+    positive: 'positive',
+    positivo: 'positive',
+    positiva: 'positive',
+    discarded: 'discarded',
+    descartado: 'discarded',
+    descartada: 'discarded',
+    nao_interessada: 'discarded',
+    nao_interessado: 'discarded',
+    scheduled: 'scheduled',
+    agendado: 'scheduled',
+    agendada: 'scheduled',
+    marcado: 'scheduled',
+    marcada: 'scheduled',
+    completed: 'completed',
+    concluido: 'completed',
+    concluida: 'completed',
+    fechado: 'completed',
+    fechada: 'completed',
+    venda_fechada: 'completed',
+    paid: 'paid',
+    pago: 'paid',
+    paga: 'paid'
+  };
+
+  return aliases[normalized] || null;
+};
+
 const EXCEL_EPOCH_UTC_MS = Date.UTC(1899, 11, 30);
 
 const isValidDateParts = (year: number, month: number, day: number, hour: number, minute: number, second: number): boolean => {
@@ -136,6 +179,9 @@ export const formatCurrency = (value: number): string => {
 };
 
 export const inferStatus = (item: any): any => {
+  const explicitStatus = normalizeLeadStatus(item.status || item.estado || item.Estado || item['[STATUS]']);
+  if (explicitStatus) return explicitStatus;
+
   const notes = String(item.Comentários || item.Notas || item.notes || '').toLowerCase();
   const appointment = String(item['Data Primeira Consulta'] || item.appointmentDate || item.data_agendada || '').trim();
   const sendFlag = String(item.Enviar || item.enviar || item.send_flag || '').trim().toLowerCase();
@@ -143,13 +189,22 @@ export const inferStatus = (item: any): any => {
 
   const isMarked = (value: string): boolean => ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(value);
 
-  if ((appointment && appointment.length > 2) || isMarked(sendFlag) || notes.includes('marcado') || notes.includes('agendado')) {
-    return 'scheduled';
+  const statusMarker = notes.match(/\[status\s*:\s*(new|contacted|discarded|scheduled|positive|completed|paid)\]/i);
+  if (statusMarker) {
+    const markedStatus = normalizeLeadStatus(statusMarker[1]);
+    if (markedStatus) return markedStatus;
   }
 
-  const discardKeywords = ['engano', 'não atende', 'não interessa', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'falecido'];
+  if (notes.includes('pago') || notes.includes('pagamento confirmado')) return 'paid';
+  if (notes.includes('venda fechada') || notes.includes('orçamento fechado') || notes.includes('orcamento fechado') || notes.includes('fechado no valor')) return 'completed';
+
+  const discardKeywords = ['engano', 'não atende', 'não interessa', 'não tem interesse', 'sem interesse', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'incorreto', 'falecido', 'descartad'];
   if (discardKeywords.some(key => notes.includes(key))) {
     return 'discarded';
+  }
+
+  if ((appointment && appointment.length > 2) || isMarked(sendFlag) || notes.includes('marcado') || notes.includes('agendado')) {
+    return 'scheduled';
   }
 
   if (isMarked(callFlag) || notes.includes('liguei') || notes.includes('contactado') || notes.includes('contactada') || notes.includes('ligar mais tarde')) {

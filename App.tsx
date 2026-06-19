@@ -8,7 +8,7 @@ import Agenda from './views/Agenda';
 import Accounts from './views/Accounts';
 import Admin from './views/Admin';
 import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
-import { formatMonthYear, getLeadsByMonth, inferStatus, parseLeadDate, toTimestampMs } from './utils';
+import { formatMonthYear, getLeadsByMonth, inferStatus, normalizeLeadStatus, parseLeadDate, toTimestampMs } from './utils';
 
 const GOOGLE_SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
 const APPS_SCRIPT_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOXEHfjsc5DAo6VOh-6iNFQOZM6qyPMkDZmQC_CI3sekf4dP6qWpLdUBHM9DLnf2I/exec';
@@ -191,6 +191,15 @@ const App: React.FC = () => {
         // Preserva linhas sem data, mas evita "agora" artificial (que distorcia ordenação por recência).
         const timestamp = parsedDate ? parsedDate.toISOString() : '';
 
+        const status = normalizeLeadStatus(normalized.status) || inferStatus({
+          ...item,
+          Comentários: notes,
+          'Data Primeira Consulta': appointmentDate,
+          Enviar: normalized.send_flag,
+          Ligar: normalized.call_flag,
+          status: normalized.status
+        });
+
         return {
           id: String(normalized.row_number || Math.random()),
           externalId: String(normalized.row_number || '0'),
@@ -198,14 +207,8 @@ const App: React.FC = () => {
           phone: String(normalized.phone || ''),
           email: String(normalized.email || ''),
           timestamp,
-          status: inferStatus({
-            ...item,
-            Comentários: notes,
-            'Data Primeira Consulta': appointmentDate,
-            Enviar: normalized.send_flag,
-            Ligar: normalized.call_flag
-          }),
-          isContacted: !!(normalized.contact_date || normalized.owner || firstValue(normalized.call_flag)),
+          status,
+          isContacted: status !== 'new' || !!(normalized.contact_date || normalized.owner || firstValue(normalized.call_flag)),
           notes,
           doctor: String(normalized.doctor || ''),
           appointmentDate,
@@ -216,7 +219,7 @@ const App: React.FC = () => {
 
   const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
-  const callAppsScriptAction = async (action: string, payload?: Record<string, unknown>): Promise<any> => {
+  const callAppsScriptAction = async (action: string, payload?: Record<string, unknown>, signal?: AbortSignal): Promise<any> => {
     const url = new URL(APPS_SCRIPT_BASE_URL);
     url.searchParams.set('action', action);
     if (payload) {
@@ -226,7 +229,8 @@ const App: React.FC = () => {
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: { Accept: 'application/json' },
-      cache: 'no-store'
+      cache: 'no-store',
+      signal
     });
 
     const text = await response.text();
@@ -249,7 +253,7 @@ const App: React.FC = () => {
     const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const data = await callAppsScriptAction('getLeads');
+      const data = await callAppsScriptAction('getLeads', undefined, controller.signal);
 
       const payload = Array.isArray(data)
         ? data

@@ -519,13 +519,37 @@ function isLeadMarked_(value) {
   return ['x', '✓', '✔', '✅', 'sim', 'yes', 'true', '1'].includes(String(value || '').trim().toLowerCase());
 }
 
+function normalizeLeadStatusValue_(value) {
+  const key = normalizeLeadKey_(value);
+  const aliases = {
+    new: 'new', novo: 'new', nova: 'new',
+    contacted: 'contacted', contactado: 'contacted', contactada: 'contacted',
+    positive: 'positive', positivo: 'positive', positiva: 'positive',
+    discarded: 'discarded', descartado: 'discarded', descartada: 'discarded', nao_interessada: 'discarded', nao_interessado: 'discarded',
+    scheduled: 'scheduled', agendado: 'scheduled', agendada: 'scheduled', marcado: 'scheduled', marcada: 'scheduled',
+    completed: 'completed', concluido: 'completed', concluida: 'completed', fechado: 'completed', fechada: 'completed', venda_fechada: 'completed',
+    paid: 'paid', pago: 'paid', paga: 'paid'
+  };
+  return aliases[key] || '';
+}
+
 function inferLeadStatus_(item) {
+  const explicitStatus = normalizeLeadStatusValue_(item.status || item.estado);
+  if (explicitStatus) return explicitStatus;
+
   const notes = String(item.notes || '').toLowerCase();
   const appointment = buildLeadAppointmentDate_(item);
-  if (appointment || isLeadMarked_(item.send_flag) || notes.indexOf('marcado') !== -1 || notes.indexOf('agendado') !== -1) return 'scheduled';
 
-  const discardKeywords = ['engano', 'não atende', 'não interessa', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'falecido'];
+  const statusMarker = notes.match(/\[status\s*:\s*(new|contacted|discarded|scheduled|positive|completed|paid)\]/i);
+  if (statusMarker) return statusMarker[1].toLowerCase();
+
+  if (notes.indexOf('pago') !== -1 || notes.indexOf('pagamento confirmado') !== -1) return 'paid';
+  if (notes.indexOf('venda fechada') !== -1 || notes.indexOf('orçamento fechado') !== -1 || notes.indexOf('orcamento fechado') !== -1 || notes.indexOf('fechado no valor') !== -1) return 'completed';
+
+  const discardKeywords = ['engano', 'não atende', 'não interessa', 'não tem interesse', 'sem interesse', 'desligou', 'longe', 'errado', 'não precisa', 'incorrecto', 'incorreto', 'falecido', 'descartad'];
   if (discardKeywords.some((key) => notes.indexOf(key) !== -1)) return 'discarded';
+
+  if (appointment || isLeadMarked_(item.send_flag) || notes.indexOf('marcado') !== -1 || notes.indexOf('agendado') !== -1) return 'scheduled';
 
   if (isLeadMarked_(item.call_flag) || notes.indexOf('liguei') !== -1 || notes.indexOf('contactado') !== -1 || notes.indexOf('contactada') !== -1 || notes.indexOf('ligar mais tarde') !== -1) return 'contacted';
   return 'new';
@@ -582,6 +606,25 @@ function parseLeadAppointmentParts_(value) {
   };
 }
 
+function buildLeadStatusNote_(status, incomingNote, payload) {
+  const normalizedStatus = normalizeLeadStatusValue_(status);
+  const note = String(incomingNote || '').trim();
+  if (!normalizedStatus) return note;
+
+  const labels = {
+    contacted: 'Contactada',
+    discarded: 'Descartada',
+    scheduled: 'Agendada',
+    completed: 'Venda fechada',
+    paid: 'Pagamento confirmado',
+    positive: 'Positiva',
+    new: 'Nova'
+  };
+  const value = payload && payload.valor_fechado !== undefined && payload.valor_fechado !== null && payload.valor_fechado !== '' ? ' — valor: ' + payload.valor_fechado : '';
+  const marker = '[STATUS:' + normalizedStatus + '] ' + (labels[normalizedStatus] || normalizedStatus) + value;
+  return note ? marker + ' — ' + note : marker;
+}
+
 function updateLeadGoSmile_(payload) {
   const rowNumber = Number(payload.row_number);
   if (!rowNumber || rowNumber < 2) throw new Error('row_number inválido.');
@@ -593,8 +636,9 @@ function updateLeadGoSmile_(payload) {
   const status = payload.status || payload.estado;
   const appointmentValue = firstLeadValue_(payload.data_agendada, payload.data_consulta, payload.appointment_date);
   const appointmentParts = appointmentValue ? parseLeadAppointmentParts_(appointmentValue) : null;
+  const incomingNote = firstLeadValue_(payload.comentario, payload.notes, payload.resumo_contacto);
   const updates = {
-    notes: firstLeadValue_(payload.comentario, payload.notes, payload.resumo_contacto)
+    notes: buildLeadStatusNote_(status, incomingNote, payload)
   };
 
   if (appointmentParts) {
@@ -606,6 +650,7 @@ function updateLeadGoSmile_(payload) {
 
   if (status === 'scheduled' || appointmentValue) updates.send_flag = 'X';
   if (status === 'contacted' || status === 'positive') updates.call_flag = '✅';
+  if (normalizeLeadStatusValue_(status) === 'discarded') updates.call_flag = '✅';
 
   const applied = {};
   Object.keys(updates).forEach((key) => {
