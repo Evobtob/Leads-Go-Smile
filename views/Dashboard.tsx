@@ -52,27 +52,20 @@ const Dashboard: React.FC<DashboardProps> = ({ leads, monthLabel }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 w-full gap-4">
-          <div className="flex flex-col items-center">
-            <div className="flex items-center gap-1.5 mb-1">
-               <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-               <span className="text-xl font-bold text-[#2D3748]">{getPercent(positive)}%</span>
-            </div>
-            <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">Positivas</span>
-          </div>
-          <div className="flex flex-col items-center border-x border-gray-100">
+        <div className="grid grid-cols-2 w-full gap-4">
+          <div className="flex flex-col items-center border-r border-gray-100">
             <div className="flex items-center gap-1.5 mb-1">
                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                <span className="text-xl font-bold text-[#2D3748]">{getPercent(scheduled)}%</span>
             </div>
-            <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">Marcadas</span>
+            <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">Agendadas</span>
           </div>
           <div className="flex flex-col items-center">
             <div className="flex items-center gap-1.5 mb-1">
                <div className="w-1.5 h-1.5 bg-red-400 rounded-full"></div>
                <span className="text-xl font-bold text-[#2D3748]">{getPercent(lixo)}%</span>
             </div>
-            <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">Lixo</span>
+            <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">Descartadas</span>
           </div>
         </div>
       </div>
@@ -84,7 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({ leads, monthLabel }) => {
         </div>
         <div className="bg-white rounded-[32px] ios-shadow border border-gray-50 p-6">
             <span className="text-[10px] font-bold text-[#A0AEC0] uppercase tracking-wider block mb-2">Objetivo</span>
-            <span className="text-3xl font-bold text-[#2D3748]">75%</span>
+            <span className="text-3xl font-bold text-[#2D3748]">25%</span>
         </div>
       </div>
     </div>
