@@ -57,6 +57,9 @@ const Dashboard: React.FC<DashboardProps> = ({ leads, monthLabel }) => {
             <div className="flex items-center gap-1.5 mb-1">
                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                <span className="text-xl font-bold text-[#2D3748]">{getPercent(scheduled)}%</span>
+               <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600 whitespace-nowrap">
+                 Total: {scheduled}
+               </span>
             </div>
             <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">Agendadas</span>
           </div>
