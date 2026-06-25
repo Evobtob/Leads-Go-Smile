@@ -8,7 +8,7 @@ import Agenda from './views/Agenda';
 import Accounts from './views/Accounts';
 import Admin from './views/Admin';
 import { AppView, Lead, AdminSettings, LeadUpdatePayload } from './types';
-import { formatMonthYear, getLeadsByMonth, inferStatus, normalizeLeadStatus, parseLeadDate, toTimestampMs } from './utils';
+import { formatLeadDate, formatMonthYear, getLeadsByMonth, inferStatus, normalizeLeadStatus, normalizeSearchText, parseLeadDate, toTimestampMs } from './utils';
 
 const GOOGLE_SHEET_ID = '1LMcABXhrGZE0fZhRSWTS0pXRmwGsruUIbs90iqUTba4';
 const APPS_SCRIPT_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOXEHfjsc5DAo6VOh-6iNFQOZM6qyPMkDZmQC_CI3sekf4dP6qWpLdUBHM9DLnf2I/exec';
@@ -46,6 +46,7 @@ const App: React.FC = () => {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [searchQuery, setSearchQuery] = useState('');
   const [settings, setSettings] = useState<AdminSettings>({
     commissionPercent: 3,
     dataUrl: LEADS_WEBHOOK_URL,
@@ -403,7 +404,7 @@ const App: React.FC = () => {
         estado: extraData?.estado,
         comentario: extraData?.comentario || updates.notes,
         resumo_contacto: extraData?.resumo_contacto || extraData?.comentario || updates.notes,
-        medico: extraData?.medico || updates.doctor,
+        medico: extraData && Object.prototype.hasOwnProperty.call(extraData, 'medico') ? extraData.medico : updates.doctor,
         data_consulta: extraData?.data_consulta || updates.appointmentDate,
         data_agendada: extraData?.data_agendada || extraData?.data_consulta || updates.appointmentDate,
         valor_fechado: extraData?.valor_fechado !== undefined ? extraData.valor_fechado : updates.value,
@@ -474,13 +475,63 @@ const App: React.FC = () => {
 
   const monthLabel = formatMonthYear(selectedDate);
   const currentLeads = getLeadsByMonth(leads, selectedDate.getMonth(), selectedDate.getFullYear());
+  const normalizedSearchQuery = normalizeSearchText(searchQuery);
+  const globalSearchResults = normalizedSearchQuery
+    ? leads.filter((lead) => normalizeSearchText(lead.name).includes(normalizedSearchQuery))
+    : [];
+
+  const openLeadLocation = (lead: Lead) => {
+    const leadDate = parseLeadDate(lead.timestamp);
+    if (leadDate) setSelectedDate(new Date(leadDate.getFullYear(), leadDate.getMonth(), 1));
+    if (lead.status === 'discarded') setActiveView('lixo');
+    else if (lead.status === 'scheduled') setActiveView('visitas');
+    else if (lead.status === 'completed' || lead.status === 'paid') setActiveView('contas');
+    else setActiveView('inbox');
+    setSearchQuery('');
+  };
+
+  const renderGlobalSearch = () => (
+    <div className="py-4 space-y-4">
+      <div className="flex justify-between items-center px-1">
+        <span className="text-[11px] font-bold text-[#A0AEC0] uppercase tracking-wider">
+          {globalSearchResults.length} resultado(s) globais
+        </span>
+        <button onClick={() => setSearchQuery('')} className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Limpar</button>
+      </div>
+      {globalSearchResults.length === 0 ? (
+        <div className="text-center py-20 text-gray-400 font-medium">Nenhuma lead encontrada por nome.</div>
+      ) : globalSearchResults.map((lead) => (
+        <div key={lead.id} className="bg-white rounded-[32px] ios-shadow border border-gray-50 p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div className="max-w-[70%]">
+              <h3 className="text-xl font-bold text-[#2D3748] leading-tight mb-1">{lead.name}</h3>
+              <span className="text-[11px] font-bold text-[#CBD5E0]">#{lead.externalId} • {formatLeadDate(lead.timestamp, 'Sem data')}</span>
+            </div>
+            <span className="px-3 py-1 bg-blue-50 text-blue-500 rounded-full text-[10px] font-bold uppercase">{lead.status}</span>
+          </div>
+          <div className="text-[12px] text-slate-500 space-y-1 mb-5">
+            <p><strong>Telefone:</strong> {lead.phone || '—'}</p>
+            <p><strong>Email:</strong> {lead.email || '—'}</p>
+            {lead.appointmentDate && <p><strong>Consulta:</strong> {lead.appointmentDate}</p>}
+          </div>
+          <button
+            onClick={() => openLeadLocation(lead)}
+            className="w-full py-4 rounded-2xl bg-black text-white text-[11px] font-bold uppercase tracking-wider active:scale-95 transition-transform"
+          >
+            Abrir lead na lista correta
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 
   const renderView = () => {
+    if (normalizedSearchQuery) return renderGlobalSearch();
     switch (activeView) {
       case 'resumo': return <Dashboard leads={currentLeads} monthLabel={monthLabel} />;
       case 'inbox': return (
         <Inbox 
-          leads={currentLeads.filter(l => l.status === 'new' || l.status === 'contacted')} 
+          leads={currentLeads.filter(l => l.status === 'new' || l.status === 'contacted' || l.status === 'positive')}
           onUpdateStatus={handleLeadAction} 
           onSync={fetchLeads} 
           monthLabel={monthLabel}
@@ -523,6 +574,8 @@ const App: React.FC = () => {
       onNextMonth={() => changeMonth(1)}
       onSync={fetchLeads}
       isSyncing={isLoading || isSyncing}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
     >
       {(fetchError || isSyncing || isLoading || syncStatusMessage) && (
         <div className={`px-4 py-2 text-[10px] font-bold text-center uppercase tracking-tight transition-all fixed top-[110px] left-0 right-0 z-50 shadow-md ${(isSyncing || isLoading || syncStatusMessage) ? 'bg-blue-600 text-white' : 'bg-red-600 text-white'}`}>

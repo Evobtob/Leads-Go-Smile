@@ -2,7 +2,7 @@
 import React from 'react';
 import { NAVIGATION_ITEMS } from '../constants';
 import { AppView } from '../types';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Search, X } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +15,8 @@ interface LayoutProps {
   onNextMonth?: () => void;
   onSync?: () => void;
   isSyncing?: boolean;
+  searchQuery?: string;
+  onSearchQueryChange?: (value: string) => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
@@ -27,7 +29,9 @@ const Layout: React.FC<LayoutProps> = ({
   onPrevMonth,
   onNextMonth,
   onSync,
-  isSyncing
+  isSyncing,
+  searchQuery = '',
+  onSearchQueryChange
 }) => {
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-white overflow-hidden relative shadow-2xl border-x border-gray-100">
@@ -51,17 +55,36 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
         
         {activeView !== 'admin' && (
-          <div className="mt-4 flex items-center justify-between bg-[#F1F4F8] px-2 py-1.5 rounded-2xl">
-            <button onClick={onPrevMonth} className="p-1.5 hover:bg-white rounded-xl transition-colors">
-              <ChevronLeft size={18} className="text-slate-500" />
-            </button>
-            <span className="text-[12px] font-bold text-[#718096] uppercase">
-              {currentMonthLabel}
-            </span>
-            <button onClick={onNextMonth} className="p-1.5 hover:bg-white rounded-xl transition-colors">
-              <ChevronRight size={18} className="text-slate-500" />
-            </button>
-          </div>
+          <>
+            <div className="mt-4 flex items-center justify-between bg-[#F1F4F8] px-2 py-1.5 rounded-2xl">
+              <button onClick={onPrevMonth} className="p-1.5 hover:bg-white rounded-xl transition-colors">
+                <ChevronLeft size={18} className="text-slate-500" />
+              </button>
+              <span className="text-[12px] font-bold text-[#718096] uppercase">
+                {currentMonthLabel}
+              </span>
+              <button onClick={onNextMonth} className="p-1.5 hover:bg-white rounded-xl transition-colors">
+                <ChevronRight size={18} className="text-slate-500" />
+              </button>
+            </div>
+            {onSearchQueryChange && (
+              <div className="mt-3 flex items-center gap-2 bg-[#F1F4F8] px-4 py-3 rounded-2xl border border-transparent focus-within:border-blue-100">
+                <Search size={16} className="text-slate-400 shrink-0" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => onSearchQueryChange(e.target.value)}
+                  placeholder="Pesquisar lead por nome (global)"
+                  className="min-w-0 flex-1 bg-transparent outline-none text-[13px] font-bold text-slate-700 placeholder:text-slate-400"
+                />
+                {searchQuery && (
+                  <button onClick={() => onSearchQueryChange('')} className="p-1 rounded-full bg-white text-slate-400">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </header>
 

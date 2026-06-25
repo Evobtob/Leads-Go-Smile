@@ -343,6 +343,13 @@ function updateLead_(body) {
     notes: buildStatusNote_(status, incomingNote, body)
   };
 
+  if (Object.prototype.hasOwnProperty.call(body, 'medico')) updates.doctor = String(body.medico === null || body.medico === undefined ? '' : body.medico).trim();
+  else if (Object.prototype.hasOwnProperty.call(body, 'doctor')) updates.doctor = String(body.doctor === null || body.doctor === undefined ? '' : body.doctor).trim();
+  if (appointmentValue) {
+    updates.data_agendada = appointmentValue;
+    updates.appointment_date = appointmentValue;
+  }
+
   if (appointmentParts) {
     updates.appointment_day = appointmentParts.appointment_day;
     updates.appointment_month = appointmentParts.appointment_month;
@@ -363,7 +370,7 @@ function updateLead_(body) {
   const applied = {};
   Object.keys(updates).forEach(function(key) {
     const value = updates[key];
-    if (value === undefined || value === null || value === '') return;
+    if (value === undefined || value === null || (value === '' && key !== 'doctor')) return;
     const column = getColumnIndexByCanonical_(headers, key);
     if (column === -1) return;
     sheet.getRange(rowNumber, column).setValue(value);

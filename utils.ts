@@ -151,6 +151,19 @@ export const formatLeadTime = (raw: unknown, fallback = '—'): string => {
   return parsed.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
 };
 
+export const toDateTimeLocalValue = (raw: unknown): string => {
+  const parsed = parseLeadDate(raw);
+  if (!parsed) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+};
+
+export const normalizeSearchText = (raw: unknown): string => String(raw ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
 export const formatMonthYear = (date: Date): string => {
   const months = [
     'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',

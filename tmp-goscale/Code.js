@@ -684,6 +684,13 @@ function updateLeadGoSmile_(payload) {
     notes: buildLeadStatusNote_(status, incomingNote, payload)
   };
 
+  if (Object.prototype.hasOwnProperty.call(payload, 'medico')) updates.doctor = String(payload.medico === null || payload.medico === undefined ? '' : payload.medico).trim();
+  else if (Object.prototype.hasOwnProperty.call(payload, 'doctor')) updates.doctor = String(payload.doctor === null || payload.doctor === undefined ? '' : payload.doctor).trim();
+  if (appointmentValue) {
+    updates.data_agendada = appointmentValue;
+    updates.appointment_date = appointmentValue;
+  }
+
   if (appointmentParts) {
     updates.appointment_day = appointmentParts.appointment_day;
     updates.appointment_month = appointmentParts.appointment_month;
@@ -704,7 +711,7 @@ function updateLeadGoSmile_(payload) {
   const applied = {};
   Object.keys(updates).forEach((key) => {
     const value = updates[key];
-    if (value === undefined || value === null || value === '') return;
+    if (value === undefined || value === null || (value === '' && key !== 'doctor')) return;
     const col = findLeadColumn_(headers, key);
     if (col === -1) return;
     sheet.getRange(rowNumber, col).setValue(value);
